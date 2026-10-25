@@ -279,11 +279,12 @@ def analyze(route_path, settings):
     if settings['climbs']:
         argv.append('--climbs')
     args = parameters.Parameters(argv)
-    args.time = settings['start_time'] or False  # Unix timestamp, bypassing the date parsing of the command line
+    args.time = settings['start_time'] or False  # datetime, bypassing the date parsing of the command line
     args.output = False
     args.weather_file = settings.get('weather_file')  # Stored weather instead of API calls (example route)
 
     data = assets.Assets(args)
+    utilities.set_start_time(args, data)
     data = speedcalculation.__init__(args, data)
     if args.climbs:
         utilities.climb_detection(data)
@@ -486,11 +487,12 @@ def results_layout(key, args, data, settings, theme='light'):
     has_weather = args.time is not False and track.has('temperature_c')
     climbs = utilities.climb_summary(track) if args.climbs else []
     summits = summit_markers(track, climbs)
-    finish = datetime.fromtimestamp(args.time + ride_s).strftime('%H:%M') if args.time else None
+    timezone = utilities.route_timezone(track)
+    finish = datetime.fromtimestamp(args.time + ride_s, timezone).strftime('%H:%M') if args.time else None
 
     meta = []
     if args.time:
-        meta += [("Start", datetime.fromtimestamp(args.time).strftime('%a %-d %b %Y, %H:%M')),
+        meta += [("Start", datetime.fromtimestamp(args.time, timezone).strftime('%a %-d %b %Y, %H:%M')),
                  ("Weather provider", f"{utilities.WEATHER_PROVIDER_NAMES[args.weather]}{' (stored)' if settings.get('weather_file') else ''}")]
     dems = dem_sources(track)
     meta += [("DEMs" if len(dems) > 1 else "DEM", ', '.join(dems) or "none"),
@@ -881,16 +883,15 @@ def analysis_outputs(example, input_method, upload_contents, upload_filename, ur
     if any(value is None for value in values):
         return error("Please fill in all rider parameters.")
 
-    timestamp = 0
+    start = None
     if weather_on:
         if not start_date or parse_time(start_time) is None:
             return error("Please enter the start date and time (24 h, HH:MM) for the weather forecast.")
-        start = datetime.combine(date.fromisoformat(start_date), parse_time(start_time))
-        timestamp = int(time.mktime(start.timetuple()))  # Local time, as on the command line
+        start = datetime.combine(date.fromisoformat(start_date), parse_time(start_time))  # Local time at the route start
 
     settings = dict(power_flat=power_flat, power_up=power_up, power_down=power_down, weight=weight,
                     cda_flat=cda_flat, cda_up=cda_up, cda_down=cda_down, rr_type=rr_type,
-                    crr=rr_value if rr_type == "Crr" else rr_value / PRR_PER_CRR, climbs=climbs, start_time=timestamp,
+                    crr=rr_value if rr_type == "Crr" else rr_value / PRR_PER_CRR, climbs=climbs, start_time=start,
                     weather_file=str(EXAMPLE_WEATHER) if example and EXAMPLE_WEATHER.exists() else None)
 
     key = uuid.uuid4().hex

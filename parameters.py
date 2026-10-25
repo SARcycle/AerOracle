@@ -46,7 +46,7 @@ class Parameters:
         parse.add_argument('-p', '--power', nargs='+', type=int, help='Average Power [W] [Flat, Uphill, Downhill]; Default: [210, 231, 0]', default=None)
         parse.add_argument('-w', '--weight', type=float, help='System weight (rider + bike) [kg]; Default: 80',
                            default=None)
-        parse.add_argument('-t', '--time', type=str, help='Start time of the ride [yyyymmddHHMMSS]', default=None)
+        parse.add_argument('-t', '--time', type=str, help='Start time of the ride, local time at the route start [yyyymmddHHMMSS]', default=None)
         parse.add_argument('-q', '--quiet', action='store_true', help='Suppress output')
         parse.add_argument('-o', '--output', type=str, help='Output file name', default=None)
         parse.add_argument('-u', '--url', type=str, help='URL', default=None)
@@ -114,11 +114,7 @@ class Parameters:
                 self.time = False
                 utilities.display_error_message('No internet connection - continuing without weather data')
             else:
-                self.time = datetime.timestamp(dateutil.parser.parse(self.time))
-                if self.time - datetime.timestamp(datetime.now()) > 7 * 86400:
-                    pass
-                    utilities.display_error_message('Forecasts more than 7 days in advance are not supported. Calculating without wind.')
-                    self.time = False
+                self.time = dateutil.parser.parse(self.time)  # Unix timestamp once the route is known: utilities.set_start_time
         if self.output is None:
             self.output = True
         if self.quiet is None:

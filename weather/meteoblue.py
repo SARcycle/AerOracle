@@ -17,7 +17,7 @@ def meteoBlueRequest(lat, lon, ele, forecast_time, api_key):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36"}
     json_forecast = requests.get(url, headers=headers)
-    forecast_dates, winddir, windspeed, temp, success = parseForecastJSON(json_forecast)
+    forecast_dates, winddir, windspeed, temp, success = parseForecastJSON(json_forecast, utilities.timezone_at(lat, lon))
 
     sample = dict.fromkeys(weather.SAMPLE_COLUMNS, np.nan)
     # Finding forecast closest to desired time
@@ -54,14 +54,15 @@ def getMeteoBlueForecast(lat, lon, elevation, forecast_time):
         raise RuntimeError('MeteoBlue: request unsuccessful') from e
 
 
-def parseForecastJSON(json_object):
+def parseForecastJSON(json_object, timezone):
+    """Forecast values; the times in the JSON are local times of the location (timezone)."""
     j = json_object.json()
     if 'error' in j: # In case the number of requests is exceeded
         missing = np.full((24,), np.nan)
         return missing, missing, missing, missing, False
 
     data = j['data_xmin']
-    forecast_dates = np.array([dt.timestamp(dt.strptime(time, '%Y-%m-%d %H:%M')) for time in data['time']])
+    forecast_dates = np.array([dt.strptime(time, '%Y-%m-%d %H:%M').replace(tzinfo=timezone).timestamp() for time in data['time']])
     winddir = np.array(data['winddirection'], dtype=float)
     windspeed = np.array(data['windspeed'], dtype=float)
     temp = np.array(data['temperature'], dtype=float)

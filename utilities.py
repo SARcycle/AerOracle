@@ -383,7 +383,7 @@ def plot_wind_conditions(parameters, assets):
         f'{parameters.weight} kg',
         f'{parameters.power.flat:0.0f}/{parameters.power.uphill:0.0f}/{parameters.power.downhill:0.0f} W',
         f'{parameters.cda.flat}/{parameters.cda.uphill}/{parameters.cda.downhill}',
-        f'{datetime.fromtimestamp(parameters.time).strftime("%Y/%m/%d %H:%M:%S")}',
+        f'{datetime.fromtimestamp(parameters.time, route_timezone(track)).strftime("%Y/%m/%d %H:%M:%S")}',
         f'{datetime.now().strftime("%Y/%m/%d %H:%M:%S")}'
     ))
 
@@ -455,32 +455,27 @@ def correct_peak_location(parameters, assets):
 def daylight_warning(parameters, assets) -> str | None:
     """Warning if the ride starts before sunrise or ends after sunset (None if it does not)."""
     import datetime
-    from zoneinfo import ZoneInfo
-    from timezonefinder import TimezoneFinder
     import astral
     from astral.sun import sun
     try:
         lat, lon, timestamp = assets.track['lat'], assets.track['lon'], assets.track['timestamp']
         start_time = parameters.time
         end_time = start_time + (timestamp[-1] - timestamp[0])
-        tf = TimezoneFinder()
-        timezone_str_start = tf.timezone_at(lat=lat[0], lng=lon[0])
         l_start = astral.LocationInfo()
         l_start.name = 'name'
         l_start.region = 'region'
         l_start.latitude = lat[0]
         l_start.longitude = lon[0]
-        dt_start = datetime.datetime.fromtimestamp(start_time).replace(tzinfo=ZoneInfo(timezone_str_start))
+        dt_start = datetime.datetime.fromtimestamp(start_time, timezone_at(lat[0], lon[0]))
         sunrise = astral.sun.sunrise(l_start.observer, date=dt_start, tzinfo=l_start.timezone)
         sunrise = sunrise.replace(microsecond=0)
 
-        timezone_str_end = tf.timezone_at(lat=lat[-1], lng=lon[-1])
         l_end = astral.LocationInfo()
         l_end.name = 'name'
         l_end.region = 'region'
         l_end.latitude = lat[-1]
         l_end.longitude = lon[-1]
-        dt_end = datetime.datetime.fromtimestamp(end_time).replace(tzinfo=ZoneInfo(timezone_str_end))
+        dt_end = datetime.datetime.fromtimestamp(end_time, timezone_at(lat[-1], lon[-1]))
         sunset = astral.sun.sunset(l_end.observer, date=dt_end, tzinfo=l_end.timezone)
         sunset = sunset.replace(microsecond=0)
 
@@ -694,9 +689,29 @@ def count_points_in_shapes(lat, lon, shapes) -> int:
     """Number of (point, shape) pairs with the point lying within the shape."""
     return _points_within(lat, lon, shapes).shape[1]
 
-def get_timezone_offset(assets, parameters):
+def timezone_at(lat, lon):
+    """Time zone at a location (the time zone of this computer if there is none, e.g. at sea)."""
     from timezonefinder import TimezoneFinder
     from zoneinfo import ZoneInfo
-    timezone = TimezoneFinder().timezone_at(lat=assets.track['lat'][0], lng=assets.track['lon'][0])
-    offset = datetime.fromtimestamp(parameters.time).replace(tzinfo=ZoneInfo(timezone)).utcoffset()
+    name = TimezoneFinder().timezone_at(lat=float(lat), lng=float(lon))
+    return ZoneInfo(name) if name else datetime.now().astimezone().tzinfo
+
+def route_timezone(track):
+    """Time zone at the start of the route: the start time is entered in it."""
+    return timezone_at(track['lat'][0], track['lon'][0])
+
+def set_start_time(parameters, assets):
+    """Convert parameters.time from a datetime (without time zone: local time at the route start) to a Unix timestamp."""
+    if not parameters.time:
+        return
+    start = parameters.time
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=route_timezone(assets.track))
+    parameters.time = start.timestamp()
+    if parameters.time - datetime.timestamp(datetime.now()) > 7 * 86400:
+        display_error_message('Forecasts more than 7 days in advance are not supported. Calculating without wind.')
+        parameters.time = False
+
+def get_timezone_offset(assets, parameters):
+    offset = datetime.fromtimestamp(parameters.time or 0, route_timezone(assets.track)).utcoffset()
     return offset.total_seconds()

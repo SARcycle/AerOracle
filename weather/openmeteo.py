@@ -7,6 +7,8 @@ import requests_cache
 from retry_requests import retry
 import os, sys
 
+import utilities
+
 try:  # Usage statistics with resource use of the API calls (usage.db)
     from resource_monitor import track_resources
     from tracker_with_resources import track_api_call_with_resources, log_resource_usage
@@ -32,6 +34,7 @@ def getOpenMeteoForecast(lat, lon, elevation, forecast_time):
     print("\t- Getting Weather Data ({0:.0f} queries from Open-Meteo)".format(len(lat)))
 
     now_ts = datetime.timestamp(datetime.now())
+    timezone = utilities.timezone_at(lat[0], lon[0])  # Dates are local dates of the locations (timezone "auto")
     cutoff_archive    = datetime(2024, 1, 1).timestamp()   # before 2024 → archive API
     cutoff_hist_fcst  = now_ts - 2 * 86400                 # 2024–2 days ago → historical forecast API
                                                            # within last 2 days → forecast API
@@ -40,8 +43,8 @@ def getOpenMeteoForecast(lat, lon, elevation, forecast_time):
         # Dates before 2024: ERA5 / archive API
         url = "https://archive-api.open-meteo.com/v1/archive"
         specific_params = {
-            "start_date": datetime.fromtimestamp(np.min(forecast_time)).strftime("%Y-%m-%d"),
-            "end_date":   datetime.fromtimestamp(np.max(forecast_time)).strftime("%Y-%m-%d"),
+            "start_date": datetime.fromtimestamp(np.min(forecast_time), timezone).strftime("%Y-%m-%d"),
+            "end_date":   datetime.fromtimestamp(np.max(forecast_time), timezone).strftime("%Y-%m-%d"),
             "hourly": ["temperature_2m", "wind_direction_10m", "wind_speed_10m",
                        "precipitation", "sunshine_duration", "relative_humidity_2m",
                        "surface_pressure"]
@@ -51,8 +54,8 @@ def getOpenMeteoForecast(lat, lon, elevation, forecast_time):
         # 2024 until 2 days before today: historical forecast API
         url = "https://historical-forecast-api.open-meteo.com/v1/forecast"
         specific_params = {
-            "start_date": datetime.fromtimestamp(np.min(forecast_time)).strftime("%Y-%m-%d"),
-            "end_date":   datetime.fromtimestamp(np.max(forecast_time)).strftime("%Y-%m-%d"),
+            "start_date": datetime.fromtimestamp(np.min(forecast_time), timezone).strftime("%Y-%m-%d"),
+            "end_date":   datetime.fromtimestamp(np.max(forecast_time), timezone).strftime("%Y-%m-%d"),
             "hourly": ["temperature_2m", "wind_direction_10m", "wind_speed_10m",
                        "precipitation", "sunshine_duration", "relative_humidity_2m",
                        "surface_pressure"]

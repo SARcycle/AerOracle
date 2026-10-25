@@ -12,7 +12,7 @@ def visualCrossingRequest(lat, lon, forecast_time, api_key):
 
     baseurl = 'https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline'
     url = baseurl + '/{},{}/{}?key={}&unitGroup=metric&include=obs,fcst,stats,histfcst,current&options=nonulls'.format(
-        lat, lon, datetime.fromtimestamp(forecast_time).strftime('%Y-%m-%dT%H:%M:%S'), api_key)
+        lat, lon, datetime.fromtimestamp(forecast_time, utilities.timezone_at(lat, lon)).strftime('%Y-%m-%dT%H:%M:%S'), api_key)  # Local time of the location
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36"}
 
     json_forecast = requests.get(url, headers=headers)

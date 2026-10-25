@@ -41,6 +41,7 @@ def main():
     if args.check_data:
         sys.exit(0 if datacheck.report() else 1)
     data = assets.Assets(args)
+    utilities.set_start_time(args, data)
 
     distance_km = None  # Logged in usage.db
     elevation_m = None
