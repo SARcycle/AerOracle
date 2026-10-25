@@ -3,7 +3,7 @@
 Read from config.toml next to this file (see config.example.toml), each value overridable by an environment variable:
 
     data_dir     AERORACLE_DATA_DIR     Folder that contains GeoData/ (DEMs, OSM tunnels and bridges, gravimetry)
-    temp_dir     AERORACLE_TEMP_DIR     Scratch folder for downloaded DEM tiles
+    temp_dir     AERORACLE_TEMP_DIR     Scratch folder for downloads (DEM tiles, OSM extracts in tools/osm)
     input_dir    AERORACLE_INPUT_DIR    Folder in which bare input file names (main.py -i route.tcx) are looked up
     publish_dir  AERORACLE_PUBLISH_DIR  Optional: main.py moves its output files here ...
     publish_url  AERORACLE_PUBLISH_URL  ... and prints download links below this URL (both needed for publishing)
@@ -20,7 +20,7 @@ CONFIG_FILE = Path(__file__).with_name('config.toml')
 
 _DEFAULTS = {
     'data_dir': None,
-    'temp_dir': os.path.join(tempfile.gettempdir(), 'aeroracle', 'tiles'),
+    'temp_dir': os.path.join(tempfile.gettempdir(), 'aeroracle'),
     'input_dir': os.path.join(tempfile.gettempdir(), 'tcx'),
     'publish_dir': None,
     'publish_url': None,

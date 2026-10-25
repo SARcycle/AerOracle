@@ -5,8 +5,9 @@
 # Folder that contains GeoData/ (DEM/, OSM/, Gravimetry/)
 data_dir = "/data"
 
-# Scratch folder for downloaded DEM tiles (default: <system temp>/aeroracle/tiles)
-# temp_dir = "/tmp/aeroracle/tiles"
+# Scratch folder for downloads: DEM tiles and the OSM extracts of tools/osm (up to a few GB at a time).
+# Put it on disk if /tmp is a small RAM disk (tmpfs), as on recent Ubuntu (default: <system temp>/aeroracle)
+# temp_dir = "/data/tmp"
 
 # Folder in which bare input file names (main.py -i route.tcx) are looked up (default: <system temp>/tcx)
 # input_dir = "/tmp/tcx"

@@ -1,6 +1,5 @@
 import glob
 import sys
-import tempfile
 import time
 
 import os
@@ -11,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 import config
 import utilities
 
-TMP_DIR = os.path.join(tempfile.gettempdir(), 'OSM')
+TMP_DIR = os.path.join(config.TEMP_DIR, 'OSM')  # Extracts of up to a few GB: temp_dir must be on disk, not a small tmpfs
 MULTI2SINGLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'multi2single.py')
 
 
