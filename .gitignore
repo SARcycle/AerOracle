@@ -1,0 +1,23 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Local settings and secrets (templates: config.example.toml, credentials.example.json)
+/config.toml
+credentials.json
+
+# Runtime data
+usage.db
+*.sqlite
+uploads/
+outputs/
+
+# Editor settings
+.vscode/

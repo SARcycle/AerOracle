@@ -1,0 +1,43 @@
+AerOracle - Aerodynamic Cycling Modeling Tool
+Copyright (C) 2015-2026 SARcycle
+
+This program is free software: you can redistribute it and/or modify it under the terms of the
+GNU Affero General Public License as published by the Free Software Foundation, either version 3
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+Affero General Public License (file LICENSE) for more details.
+
+
+Additional terms (section 7 of the GNU Affero General Public License)
+---------------------------------------------------------------------
+
+1. Attribution (section 7(b)). Every copy and every modified version of this program that has an
+   interactive user interface, including one offered over a network, must keep a reasonably visible
+   attribution in that interface, for example in the footer, reading "Based on AerOracle by SARcycle"
+   or, for unmodified copies, "AerOracle by SARcycle", together with a link to the source code of
+   the original program (https://github.com/SARcycle/AerOracle).
+
+2. Marking of modified versions (section 7(c)). Modified versions must not be presented as the
+   original program: they must state in their user interface and in their documentation that they
+   are modified versions of AerOracle.
+
+
+Third-party components distributed with this program
+----------------------------------------------------
+
+- Bootstrap 5.3.6 (dash_assets/bootstrap.min.css): Copyright 2011-2025 The Bootstrap Authors,
+  MIT License (notice included in the file).
+- Barlow Condensed (dash_assets/fonts/BarlowCondensed-*.woff2): Copyright 2017 The Barlow Project
+  Authors, SIL Open Font License 1.1 (dash_assets/fonts/OFL-BarlowCondensed.txt).
+- Source Sans 3 (dash_assets/fonts/SourceSans3-*.woff2): Copyright 2010-2020 Adobe, with Reserved
+  Font Name 'Source', SIL Open Font License 1.1 (dash_assets/fonts/OFL-SourceSans3.txt).
+- IBM Plex Mono (dash_assets/fonts/IBMPlexMono-*.woff2): Copyright 2017 IBM Corp., with Reserved
+  Font Name "Plex", SIL Open Font License 1.1 (dash_assets/fonts/OFL-IBMPlexMono.txt).
+- Example weather (examples/tdf2022_stage12_weather.json): weather data by Open-Meteo.com,
+  CC BY 4.0 (https://open-meteo.com/).
+
+The data sets the program reads at run time (elevation models, OpenStreetMap extracts, gravity
+model, weather forecasts) are not part of this program; see "Data sources" in README.md for their
+licences and the credits they require.

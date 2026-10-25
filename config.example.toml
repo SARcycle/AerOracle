@@ -1,0 +1,21 @@
+# Copy to config.toml and adapt. Every value can also be set by an environment variable
+# (AERORACLE_DATA_DIR, AERORACLE_TEMP_DIR, AERORACLE_INPUT_DIR, AERORACLE_PUBLISH_DIR, AERORACLE_PUBLISH_URL,
+# AERORACLE_SOURCE_URL).
+
+# Folder that contains GeoData/ (DEM/, OSM/, Gravimetry/)
+data_dir = "/data"
+
+# Scratch folder for downloaded DEM tiles (default: <system temp>/aeroracle/tiles)
+# temp_dir = "/tmp/aeroracle/tiles"
+
+# Folder in which bare input file names (main.py -i route.tcx) are looked up (default: <system temp>/tcx)
+# input_dir = "/tmp/tcx"
+
+# Optional publishing of main.py's outputs (TCX, GPX, FIT, wind chart) to a web server:
+# the files are moved to publish_dir and linked below publish_url. Leave both unset to keep the files in place.
+# publish_dir = "/var/www/html/tcx"
+# publish_url = "https://example.org/tcx"
+
+# Source code repository of the running version, linked in the web app's footer. The AGPL requires offering
+# the source code to the users of a web service; set this to your repository if you run a modified version.
+# source_url = "https://github.com/SARcycle/AerOracle"

@@ -1,0 +1,68 @@
+[project]
+name = "aeroracle"
+version = "0.1.0"
+description = "Cycling aerodynamics calculations and ride time estimations"
+readme = "README.md"
+authors = [
+    { name = "SARcycle", email = "57989133+SARcycle@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE", "NOTICE"]
+dependencies = [
+    "astral>=3.2",
+    "boto3>=1.43.118",
+    "fiona>=1.10.1",
+    "fitparse>=1.2.0",
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.4",
+    "openmeteo-requests>=1.7.5",
+    "openmeteo-sdk>=1.29.0",
+    "polars>=2.0.0,<3",
+    "pyproj>=3.8.0",
+    "python-dateutil>=2.9.0",
+    "rasterio>=1.5.2",
+    "requests>=2.34.2",
+    "requests-cache>=1.3.3",
+    "retry-requests>=2.0.0",
+    "scipy>=1.18.1",
+    "shapely>=2.2.0",
+    "srtm-py>=0.3.7",
+    "statsmodels>=0.15.0",
+    "tilemapbase>=0.4.7",
+    "timezonefinder>=9.2.0",
+    "tzdata>=2026.5",
+    "xmltodict>=1.0.4",
+]
+
+[project.urls]
+Repository = "https://github.com/SARcycle/AerOracle"
+
+[project.optional-dependencies]
+# Web front end (app.py, plot_interactive.py)
+web = [
+    "dash>=4.4.1",
+    "dash-bootstrap-components>=2.0.4",
+    "flask-compress>=1.25",
+    "gunicorn>=26.2.0",
+    "plotly>=7.1.0",
+]
+# Usage statistics dashboard (dashboard.py)
+dashboard = [
+    "plotly>=7.1.0",
+    "streamlit>=1.65,<1.66",
+]
+# Resource monitoring of API calls (resource_monitor.py)
+monitoring = [
+    "psutil>=7.2.2",
+]
+# OSM / geodata maintenance scripts (tools/osm/)
+tools = [
+    "geopandas>=1.2.0",
+    "pandas>=3.1.0",
+    "pygeodesy>=26.10.20",
+    "wget>=3.2",
+]
+
+[tool.uv]
+package = false  # Scripts run from the project folder, nothing to build or install

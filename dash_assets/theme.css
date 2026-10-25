@@ -1,0 +1,22 @@
+/* Dash core components (e.g. the date picker) are styled with --Dash-* variables: follow Bootstrap's colors
+   and its dark mode (data-bs-theme, set by theme.js). Dash injects its defaults on :root after this file is loaded,
+   hence the more specific selectors. */
+html:root {
+    --Dash-Fill-Interactive-Strong: var(--bs-primary);
+}
+
+:root[data-bs-theme="dark"] {
+    --Dash-Fill-Inverse-Strong: var(--bs-body-bg);
+    --Dash-Text-Strong: var(--bs-body-color);
+    --Dash-Text-Primary: var(--bs-body-color);
+    --Dash-Text-Weak: var(--bs-secondary-color);
+    --Dash-Text-Disabled: rgba(222, 226, 230, 0.5);
+    --Dash-Stroke-Strong: var(--bs-border-color);
+    --Dash-Stroke-Weak: rgba(255, 255, 255, 0.1);
+    --Dash-Fill-Disabled: rgba(255, 255, 255, 0.1);
+    --Dash-Fill-Interactive-Weak: rgba(255, 255, 255, 0.06);
+    --Dash-Fill-Primary-Hover: rgba(255, 255, 255, 0.06);
+    --Dash-Fill-Primary-Active: rgba(255, 255, 255, 0.12);
+    --Dash-Shading-Strong: rgba(0, 0, 0, 0.6);
+    --Dash-Shading-Weak: rgba(0, 0, 0, 0.4);
+}

@@ -1,0 +1,16 @@
+#[theme]
+# Dark mode theme configuration
+#primaryColor="#FF4B4B"
+#backgroundColor="#0E1117"
+#secondaryBackgroundColor="#262730"
+#textColor="#FAFAFA"
+#font="sans serif"
+
+[server]
+# Optional server settings
+maxUploadSize=10
+enableXsrfProtection=true
+
+[browser]
+# Automatically open browser when starting
+gatherUsageStats=false
