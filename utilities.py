@@ -657,7 +657,7 @@ GDAL_CACHE_MB = 64
 
 def getpixelvalues(lat, lon, tilename):
     if os.path.exists(tilename):
-        # GDAL caches raster blocks up to 5 % of the RAM by default - limit it to keep the memory footprint small
+        # GDAL caches raster blocks up to 5% of the RAM by default - limit it to keep the memory footprint small
         with rasterio.Env(GDAL_CACHEMAX=GDAL_CACHE_MB), rasterio.open(tilename) as src:
             pixel_values = np.fromiter((x[0] for x in src.sample(zip(lon, lat))), dtype=float, count=len(lat))
     else:

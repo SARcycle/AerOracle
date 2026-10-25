@@ -1,6 +1,6 @@
 # Copy to config.toml and adapt. Every value can also be set by an environment variable
 # (AERORACLE_DATA_DIR, AERORACLE_TEMP_DIR, AERORACLE_INPUT_DIR, AERORACLE_PUBLISH_DIR, AERORACLE_PUBLISH_URL,
-# AERORACLE_SOURCE_URL).
+# AERORACLE_SOURCE_URL, AERORACLE_WHATIF_PCT).
 
 # Folder that contains GeoData/ (DEM/, OSM/, Gravimetry/)
 data_dir = "/data"
@@ -19,3 +19,6 @@ data_dir = "/data"
 # Source code repository of the running version, linked in the web app's footer. The AGPL requires offering
 # the source code to the users of a web service; set this to your repository if you run a modified version.
 # source_url = "https://github.com/SARcycle/AerOracle"
+
+# Change of each parameter (weight, power, CdA, Crr) in the what-if table, in % (default 1)
+# whatif_pct = 1

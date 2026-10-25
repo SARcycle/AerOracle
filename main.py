@@ -83,7 +83,7 @@ def main():
             print(f'Resulting Power: Avg {args.power_out.average_w:.0f} W | NP {args.power_out.normalized_w:.0f} W')
             print(f'Estimated kcal Burned: {(args.power_out.average_w*ride_time_s)/1000:.0f} kcal')
             print('Riding time if only one parameter changes (- = faster, + = slower):')
-            print(f'  {"":28s} {"-1 %":>10s} {"+1 %":>10s}')
+            print(f'  {"":28s} {f"-{args.whatif_pct:g}%":>10s} {f"+{args.whatif_pct:g}%":>10s}')
             for sensitivity in speedcalculation.sensitivities(args, data.track):
                 print(f'  {f"{sensitivity.parameter} (±{sensitivity.step})":28s} '
                       f'{utilities.format_time_change(sensitivity.minus_s):>10s} {utilities.format_time_change(sensitivity.plus_s):>10s}')

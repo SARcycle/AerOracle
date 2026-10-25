@@ -362,8 +362,8 @@ def computer_field(label, value, unit, sub=None):
 WHATIF_LABEL_SPACE = '72px'  # Kept free on both sides of the bars for their labels
 
 
-def whatif_chart(sensitivities):
-    """Horizontal bars per parameter: −1 % (pale) and +1 % (solid), green = faster, red = slower."""
+def whatif_chart(sensitivities, pct):
+    """Horizontal bars per parameter: −pct (pale) and +pct (solid), green = faster, red = slower."""
     rows = sorted(sensitivities, key=lambda s: -abs(s.plus_s))
     limit_min = max(1, int(np.ceil(max(max(abs(s.minus_s), abs(s.plus_s)) for s in rows) * 1.3 / 60)))
     tick_step = 1 if limit_min <= 3 else 2
@@ -386,11 +386,11 @@ def whatif_chart(sensitivities):
     return html.Div([
         html.Div([html.Div(), html.Div([html.Span("← faster", className='faster'), html.Span("slower →", className='slower')],
                                        className='ao-whatif-direction')], className='ao-whatif-axis'),
-        *[html.Div([html.Div([html.B(s.parameter), html.Span(f"1 % = {s.step}")], className='ao-whatif-name'),
+        *[html.Div([html.Div([html.B(s.parameter), html.Span(f"{pct:g}% = {s.step}")], className='ao-whatif-name'),
                     html.Div(bar(s.minus_s, 'minus') + bar(s.plus_s, 'plus'), className='ao-whatif-bars')], className='ao-whatif-row')
           for s in rows],
         html.Div([html.Div(), html.Div(ticks, className='ao-whatif-ticks')], className='ao-whatif-axis'),
-        html.Div([html.Span([html.I(style={'opacity': .5}), "−1 %"]), html.Span([html.I(), "+1 %"]),
+        html.Div([html.Span([html.I(style={'opacity': .5}), f"−{pct:g}%"]), html.Span([html.I(), f"+{pct:g}%"]),
                   html.Span("Only this parameter changes; power and CdA for flat, uphill and downhill together")], className='ao-whatif-key'),
     ], className='ao-whatif')
 
@@ -404,7 +404,7 @@ def climbs_table(args, climbs):
         html.Thead(html.Tr([html.Th("Top"), html.Th("Start at km"), html.Th("Top at km"), html.Th("Length"), html.Th("Average")])),
         html.Tbody([html.Tr([
             html.Td(f"{c['top_m']:.0f} m"), html.Td(f"{c['start_km']:.1f}"), html.Td(f"{c['top_km']:.1f}"), html.Td(f"{c['length_km']:.1f} km"),
-            html.Td([f"{c['grade_pct']:.1f} %", html.Span(className='ao-gbar', style={
+            html.Td([f"{c['grade_pct']:.1f}%", html.Span(className='ao-gbar', style={
                 'width': f"{max(4, round(c['grade_pct'] * 5))}px", 'background': plot_interactive.gradient_color(c['grade_pct'])})]),
         ]) for c in climbs]),
     ], className='ao-climbs'), className='ao-tablewrap')
@@ -433,7 +433,7 @@ def conditions(args, data):
         ("Mean yaw", f"{yaw:+.1f}°", "wind from the right" if yaw > 0 else "wind from the left" if yaw < 0 else "head-on"),
     ]
     if weather.sunshine_fraction is not None:
-        items.append(("Sunshine", f"{weather.sunshine_fraction * 100:.0f} %", "of riding time"))
+        items.append(("Sunshine", f"{weather.sunshine_fraction * 100:.0f}%", "of riding time"))
     if weather.precipitation_mm is not None:
         items.append(("Precipitation", f"{weather.precipitation_mm:.1f} mm", "during the ride"))
     if warning:  # Only when part of the ride is in the dark
@@ -542,7 +542,7 @@ def results_layout(key, args, data, settings, theme='light'):
         fields,
         html.Div(pills, className='ao-pills'),
         route_card,
-        html.Div([card("What if 1 % changes?", whatif_chart(speedcalculation.sensitivities(args, track)), hint="Only one parameter changes at a time"),
+        html.Div([card(f"What if {args.whatif_pct:g}% changes?", whatif_chart(speedcalculation.sensitivities(args, track), args.whatif_pct), hint="Only one parameter changes at a time"),
                   card("Climb" if len(climbs) == 1 else "Climbs", climbs_table(args, climbs), hint=f"{len(climbs)} detected" if args.climbs else None)],
                  className='ao-twocol'),
         *([card("Conditions", conditions(args, data),

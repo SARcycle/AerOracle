@@ -13,7 +13,7 @@ import utilities
 
 
 class PerGradient(NamedTuple):
-    """A setting that depends on the gradient: flat, uphill (>= 5 %), downhill (<= -5 %)."""
+    """A setting that depends on the gradient: flat, uphill (>= threshold), downhill (<= -threshold)."""
     flat: float
     uphill: float
     downhill: float
@@ -61,6 +61,8 @@ class Parameters:
         parse.add_argument('-a', '--weather', type=str, help='Weather provider to be used [o: OpenMeteo (Default), m: MeteoBlue, v: VisualCrossing]',
                            choices=['m', 'o', 'v'], default='o')
         parse.add_argument('-k', '--climbs', action='store_true', help='Automatic Climb detection and annotation as a cue')
+        parse.add_argument('-s', '--whatif', type=float, help='Change of each parameter in the what-if table [%%]; Default: whatif_pct in config.toml (1)',
+                           default=config.WHATIF_PCT)
         parse.add_argument('--check-data', action='store_true', help='Report the available data sets, credentials and programs, then exit')
 
         args = parse.parse_args(argv)
@@ -80,6 +82,7 @@ class Parameters:
         self.__setattr__('dem', [])
         self.__setattr__('climbs', args.climbs)
         self.__setattr__('check_data', args.check_data)
+        self.__setattr__('whatif_pct', abs(args.whatif))
 
     def check_parameters(self):
         if self.input is None:

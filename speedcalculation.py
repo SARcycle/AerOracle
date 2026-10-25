@@ -227,19 +227,16 @@ def ride_time_s(parameters, track):
     return np.sum(track['delta_distance_m'][1:] / speed[1:])
 
 
-SENSITIVITY_SWING = 0.01  # Relative change of each parameter for the sensitivities (±1 %)
-
-
 class Sensitivity(NamedTuple):
     parameter: str          # e.g. 'System weight'
-    step: str               # Absolute size of the 1 % change, e.g. '0.8 kg'
-    minus_s: float          # Change of the riding time [s] with the parameter 1 % lower (< 0 = faster)
-    plus_s: float           # Change of the riding time [s] with the parameter 1 % higher (< 0 = faster)
+    step: str               # Absolute size of the change, e.g. '0.8 kg'
+    minus_s: float          # Change of the riding time [s] with the parameter lower (< 0 = faster)
+    plus_s: float           # Change of the riding time [s] with the parameter higher (< 0 = faster)
 
 
 def sensitivities(parameters, track) -> list[Sensitivity]:
     """
-    Change of the riding time if only one parameter is 1 % lower / higher, all others unchanged.
+    Change of the riding time if only one parameter is parameters.whatif_pct lower / higher, all others unchanged.
     Power and CdA are scaled for flat, uphill and downhill alike.
     """
     def ride_time_with(factor, name):
@@ -248,7 +245,7 @@ def sensitivities(parameters, track) -> list[Sensitivity]:
         setattr(changed, name, PerGradient(*(v * factor for v in value)) if isinstance(value, PerGradient) else value * factor)
         return ride_time_s(changed, track)
 
-    swing = SENSITIVITY_SWING
+    swing = parameters.whatif_pct / 100
     base = ride_time_s(parameters, track)
     steps = {
         'weight': ('System weight', f'{parameters.weight * swing:.1f} kg'),

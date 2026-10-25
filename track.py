@@ -27,7 +27,7 @@ POINT_COLUMNS = {
     # 'gravity_ms2'                   # Local gravitational acceleration [m/s²]      (assets)
     # 'delta_distance_m'              # Distance to previous point [m]               (speedcalculation)
     # 'delta_elevation_m'             # Elevation change to previous point [m]       (speedcalculation)
-    # 'gradient'                      # Smoothed gradient [-] (0.05 = 5 %)           (speedcalculation)
+    # 'gradient'                      # Smoothed gradient [-] (0.05 = 5%)            (speedcalculation)
     # 'speed_ms'                      # Estimated speed [m/s]                        (speedcalculation)
     # 'temperature_c'                 # Air temperature [°C]                         (weather)
     # 'wind_direction_deg'            # Wind direction (where it blows from) [°]     (weather)

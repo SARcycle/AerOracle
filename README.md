@@ -10,14 +10,14 @@ It runs as a web app or on the command line, and writes the course back as TCX, 
 
 - **Physics model** after Martin et al. (1998): power, system weight, drag area (CdA), rolling resistance
   (Crr, or Prr from bicyclerollingresistance.com), gravity, air density and wind. Power and CdA can differ
-  between flat, uphill and downhill sections (gradient threshold `--gradient`, default 5 %).
+  between flat, uphill and downhill sections (gradient threshold `--gradient`, default 5%).
 - **Elevation** from the most detailed model covering each point: swissALTI3D, Sonny's LiDAR DTMs, Copernicus
   DEM, ALOS AW3D30, EU-DEM, ASTER GDEM, SRTM. Elevations in tunnels and on bridges are corrected with
   OpenStreetMap data, so the profile doesn't dive into valleys or climb over mountains.
 - **Weather** along the route at the time you pass: wind (head, tail, cross), temperature, precipitation and
   UV index from Open-Meteo, Visual Crossing or meteoblue, with fallback to a second provider.
 - **Climb detection** with summits added as course points, and summits moved to the actual high point.
-- **What-if table**: how much faster or slower ±1 % in weight, power, CdA or Crr makes you.
+- **What-if table**: how much faster or slower ±1% (`whatif_pct` in `config.toml`) in weight, power, CdA or Crr makes you.
 - **Course export**: TCX, GPX and FIT; in FIT, course points keep their types (summit, climb categories,
   turns) instead of collapsing to TCX's limited set.
 
@@ -103,6 +103,7 @@ uv run python main.py -i route.tcx -t 2026-07-14T09:00 -k
 | `-g`, `--gradient` | Gradient threshold for uphill/downhill power and CdA | 0.05 |
 | `-a`, `--weather` | Weather provider: `o` Open-Meteo, `m` meteoblue, `v` Visual Crossing | `o` |
 | `-k`, `--climbs` | Detect climbs and add them as course points | |
+| `-s`, `--whatif` | Change of each parameter in the what-if table, in % | `whatif_pct` (1) |
 | `-q`, `--quiet` | Less output | |
 | `--check-data` | Report available data, credentials and programs | |
 
