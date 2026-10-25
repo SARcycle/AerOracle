@@ -322,7 +322,7 @@ def outlines_from_kml(csv_path):
     file_list = sorted(glob.glob(f'{os.path.join(output_folder, "*.*")}'))
     for file in file_list:
         os.remove(file)
-    os.system(f'ls {os.path.join(output_folder, "old", "*.zip")} -1t | tail -n +4 | xargs sudo rm -f')
+    os.system(f'ls {os.path.join(output_folder, "old", "*.zip")} -1t | tail -n +4 | xargs rm -f')
 
     with open(csv_path, 'r') as f:
         lines = f.readlines()
@@ -348,7 +348,7 @@ def outlines_from_kml(csv_path):
     for file in dissolved_files:
         print(f'Multipart -> Singleparts ({os.path.basename(file).replace("_merged_dissolved.shp", "").capitalize()})')
         os.system(
-            f'sudo {sys.executable} {MULTI2SINGLE} {file} {file.replace(".shp", "_MultiPoly.shp")}')
+            f'{sys.executable} {MULTI2SINGLE} {file} {file.replace(".shp", "_MultiPoly.shp")}')
 
     all_files = sorted(glob.glob(os.path.join(output_folder, '*')))
 

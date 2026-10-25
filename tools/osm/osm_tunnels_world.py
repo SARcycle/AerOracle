@@ -265,12 +265,6 @@ try:
         fix_ownership(new_bridges_version, target_user)
         fix_ownership(production_bridges, target_user)
         
-        # Set ownership
-        uid = pwd.getpwnam(target_user).pw_uid
-        gid = pwd.getpwnam(target_user).pw_gid
-        os.system(f'sudo chown -R {uid}:{gid} {new_tunnels_version}')
-        os.system(f'sudo chown -R {uid}:{gid} {new_bridges_version}')
-        
         # Clean up old versioned directories (keep last 2 versions)
         print('Cleaning up old versions...')
         for pattern in ['tunnels_v*', 'bridges_v*']:

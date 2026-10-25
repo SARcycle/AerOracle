@@ -28,6 +28,7 @@ Tested on Ubuntu 26.04 with Python 3.14.
 1. System programs:
    ```sh
    sudo apt install gpsbabel gdal-bin    # GPX/FIT output; Copernicus DEM downloads
+   sudo apt install libgdal-dev build-essential python3-dev   # To build Fiona (no ready-made package for Python 3.14 yet)
    sudo apt install osmctools            # Only for the OSM tools in tools/osm
    ```
 2. [uv](https://docs.astral.sh/uv/) and the Python packages:
