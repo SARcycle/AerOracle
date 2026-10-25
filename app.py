@@ -428,7 +428,9 @@ def conditions(args, data):
     wind = utilities.time_weighted_mean(track, track['headwind_ms'])
     yaw = np.round(utilities.time_weighted_mean(track, track['yaw_angle_deg']) * 10) / 10
     warning = utilities.daylight_warning(args, data)
+    temperature = track['temperature_c']
     items = [
+        ("Temperature", f"{np.nanmin(temperature):.0f}–{np.nanmax(temperature):.0f} °C", "along the route"),
         ("Inline wind", f"{abs(wind):.1f} m/s", f"{'head' if wind >= 0 else 'tail'} wind, time-weighted"),
         ("Mean yaw", f"{yaw:+.1f}°", "wind from the right" if yaw > 0 else "wind from the left" if yaw < 0 else "head-on"),
     ]
@@ -439,10 +441,10 @@ def conditions(args, data):
     if warning:  # Only when part of the ride is in the dark
         items.append(("Daylight", "Bring lights", warning))
     uv = weather.uv_index_max
-    help_texts = {} if uv is None else {
-        "UV index": f"UV index {uv:.1f}. {uv_info(uv)} Source: Swiss Federal Office of Public Health (BAG), www.bag.admin.ch/uv-index"}
-    items.append(("UV index", f"{uv:.1f}" if uv is not None else "n/a", uv_info(uv).split(':')[0] if uv is not None
-                  else "only in forecasts, not for past dates"))
+    help_texts = {}
+    if uv is not None:  # Only in forecasts, not for past dates
+        help_texts["UV index"] = f"UV index {uv:.1f}. {uv_info(uv)} Source: Swiss Federal Office of Public Health (BAG), www.bag.admin.ch/uv-index"
+        items.append(("UV index", f"{uv:.1f}", uv_info(uv).split(':')[0]))
     return html.Div([html.Div([html.Span(label, className='ao-label' + (' ao-has-help' if label in help_texts else '')), html.B(value), html.Small(sub)],
                               title=help_texts.get(label)) for label, value, sub in items], className='ao-wx')
 
@@ -500,10 +502,11 @@ def results_layout(key, args, data, settings, theme='light'):
         computer_field("Average speed", f"{distance_km[-1] / ride_s * 3600:.2f}", "km/h"),
         computer_field("Ascent", f"+{ascent:.0f}", "m"),  # Highest point and finish elevation: see the profile
         computer_field("Descent", f"−{descent:.0f}", "m"),
-        computer_field("Normalized power", f"{args.power_out.normalized_w:.0f}", "W", f"average {args.power_out.average_w:.0f} W"),
+        computer_field("Normalized power", f"{args.power_out.normalized_w:.0f}", "W",
+                       f"average {args.power_out.average_w:.0f} W · {args.power_out.average_w * ride_s / 1000:.0f} kcal"),
     ], className='ao-fieldsbar', **{'aria-label': 'Key figures'})
 
-    pills = [html.Span([html.B(f"{args.power_out.average_w * ride_s / 1000:.0f}"), " kcal"], className='ao-pill')]
+    pills = []
     if getattr(data, 'tunnel_distance', 0):
         pills.append(html.Span([html.B(f"{data.tunnel_distance:.2f} km"), " tunnels & underpasses"], className='ao-pill'))
     # Weather is shown in the profile (temperature) and the conditions card only
@@ -540,7 +543,7 @@ def results_layout(key, args, data, settings, theme='light'):
         *([dbc.Alert(utilities.daylight_warning(args, data), color='warning', className='mb-0')]
           if args.time and utilities.daylight_warning(args, data) else []),
         fields,
-        html.Div(pills, className='ao-pills'),
+        *([html.Div(pills, className='ao-pills')] if pills else []),
         route_card,
         html.Div([card(f"What if {args.whatif_pct:g}% changes?", whatif_chart(speedcalculation.sensitivities(args, track), args.whatif_pct), hint="Only one parameter changes at a time"),
                   card("Climb" if len(climbs) == 1 else "Climbs", climbs_table(args, climbs), hint=f"{len(climbs)} detected" if args.climbs else None)],
