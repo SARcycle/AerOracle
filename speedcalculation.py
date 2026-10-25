@@ -9,7 +9,7 @@ import utilities
 import weather
 from parameters import PerGradient, PowerSummary
 
-RHO0 = 1.225  # Air density at sea level [kg/m³]
+RHO0 = 1.225  # Air density at sea level and 15 °C [kg/m³]
 MAX_SPEED_MS = 80 / 3.6
 DRIVETRAIN_EFFICIENCY = 0.98
 np_exceptions = getattr(np, 'exceptions', np)  # Warning classes moved to np.exceptions in numpy 1.25 (removed from np in 2.0)
@@ -52,7 +52,8 @@ def per_gradient(gradient, setting, threshold):
 
 
 def air_density_from_temperature(temperature, gravity, elevation):
-    return RHO0 * (273.15 / (temperature + 273.15) * np.exp(-RHO0 * gravity * (elevation / 101325)))
+    # RHO0 at 15 °C (288.15 K); the exponent is the isothermal barometric formula with scale height 101325 / (RHO0 * g) ≈ 8.4 km
+    return RHO0 * (288.15 / (temperature + 273.15) * np.exp(-RHO0 * gravity * (elevation / 101325)))
 
 
 def air_density_from_weather(temperature, relative_humidity, surface_pressure):
@@ -61,7 +62,7 @@ def air_density_from_weather(temperature, relative_humidity, surface_pressure):
     R_v = 461.495 # specific gas constant for water vapor [J/(kg·K)]
     temperature = temperature + 273.15 # Temperature in Kelvin
     surface_pressure = surface_pressure * 100 # Surface pressure in Pa
-    p_sat = 0.61078*np.exp((17.27*(temperature-273.15))/(temperature-35.85)) # saturation vapor pressure
+    p_sat = 610.78*np.exp((17.27*(temperature-273.15))/(temperature-35.85)) # saturation vapor pressure [Pa] (Tetens)
     p_v = relative_humidity*p_sat # vapor pressure of water
     p_d = surface_pressure - p_v # partial pressure of dry air
     return (p_d/(R_d*temperature))+(p_v/(R_v*temperature))
@@ -118,8 +119,8 @@ def update_ride_time(start_time, delta_distance, speed):
 
 
 def speed_without_wind(parameters, track):
-    """Speed [m/s] at every point without wind at 0 °C."""
-    temperature = 0
+    """Speed [m/s] at every point without wind at 15 °C (standard atmosphere)."""
+    temperature = 15
     gradient = track['gradient']
     power = per_gradient(gradient, parameters.power, parameters.gradient_threshold)
     cda = per_gradient(gradient, parameters.cda, parameters.gradient_threshold) # Before: 0.32 / 0.42 / 0.28
@@ -138,23 +139,22 @@ def speed_without_wind(parameters, track):
 def speed_with_wind(parameters, track, speed_no_wind):
     """Speed [m/s] at every point with the weather columns (headwind_ms, air_density_kgm3) of track."""
     gradient = track['gradient']
-    power = per_gradient(gradient, parameters.power, parameters.gradient_threshold)
-    cda = per_gradient(gradient, parameters.cda, parameters.gradient_threshold) # Before: 0.32 / 0.42 / 0.28
-    crr = parameters.crr  # Before: 0.0033
+    power = per_gradient(gradient, parameters.power, parameters.gradient_threshold) * DRIVETRAIN_EFFICIENCY
+    cda = per_gradient(gradient, parameters.cda, parameters.gradient_threshold)
     mass = parameters.weight * track['gravity_ms2']
     headwind = track['headwind_ms']
     drag = (track['air_density_kgm3'] / 2) * cda
-    roots = cubic_roots_real_parts(drag, 2 * headwind * drag,
-                                   headwind ** 2 * drag + crr * mass * np.cos(np.arctan(gradient)) + mass * np.sin(np.arctan(gradient)),
-                                   -1 * power * DRIVETRAIN_EFFICIENCY)
+    resistance = parameters.crr * mass * np.cos(np.arctan(gradient)) + mass * np.sin(np.arctan(gradient))
 
-    # Choice of the root as before: the only non-negative one; otherwise, the only one faster (tail wind) /
-    # slower (head wind) than without wind; otherwise keep the speed without wind
-    candidates = np.where(headwind < 0, roots > speed_no_wind, roots <= speed_no_wind)
-    speed = single_positive_root(roots)
-    speed_wind = np.max(np.where(candidates, roots, -np.inf), axis=0)
-    speed = np.where(np.isnan(speed) & (candidates.sum(axis=0) == 1), speed_wind, speed)
-    speed = np.where(np.isnan(speed), speed_no_wind, speed)
+    # Air force 1/2*rho*CdA*(v+w)*|v+w|: from the front if v + w >= 0, from behind (tail wind faster than the rider) otherwise
+    front = cubic_roots_real_parts(drag, 2 * headwind * drag, headwind ** 2 * drag + resistance, -power)
+    behind = cubic_roots_real_parts(-drag, -2 * headwind * drag, -headwind ** 2 * drag + resistance, -power)
+    valid = np.concatenate([(front > 0) & (front + headwind >= 0), (behind > 0) & (behind + headwind < 0)])
+    roots = np.concatenate([front, behind])
+
+    # The resistance grows strictly with v, so there is exactly one valid root; NaN only from rounding at v + w = 0
+    speed = np.max(np.where(valid, roots, -np.inf), axis=0)
+    speed = np.where(np.isfinite(speed), speed, speed_no_wind)
     return np.minimum(speed, MAX_SPEED_MS)
 
 

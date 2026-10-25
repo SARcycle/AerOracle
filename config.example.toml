@@ -1,6 +1,6 @@
 # Copy to config.toml and adapt. Every value can also be set by an environment variable
 # (AERORACLE_DATA_DIR, AERORACLE_TEMP_DIR, AERORACLE_INPUT_DIR, AERORACLE_PUBLISH_DIR, AERORACLE_PUBLISH_URL,
-# AERORACLE_SOURCE_URL, AERORACLE_WHATIF_PCT).
+# AERORACLE_SOURCE_URL, AERORACLE_WHATIF_PCT, AERORACLE_WIND_SHEAR_EXPONENT).
 
 # Folder that contains GeoData/ (DEM/, OSM/, Gravimetry/)
 data_dir = "/data"
@@ -22,3 +22,7 @@ data_dir = "/data"
 
 # Change of each parameter (weight, power, CdA, Crr) in the what-if table, in % (default 1)
 # whatif_pct = 1
+
+# Hellman exponent converting the forecast wind (10 m above ground) to rider height (1.2 m): v = v10 * (1.2 / 10)^exponent.
+# About 0.14 for open, flat country, 0.2 with hedges and scattered trees, 0.3 near towns and forests; 0 = no conversion (default 0.2)
+# wind_shear_exponent = 0.2

@@ -15,7 +15,8 @@ It runs as a web app or on the command line, and writes the course back as TCX, 
   DEM, ALOS AW3D30, EU-DEM, ASTER GDEM, SRTM. Elevations in tunnels and on bridges are corrected with
   OpenStreetMap data, so the profile doesn't dive into valleys or climb over mountains.
 - **Weather** along the route at the time you pass: wind (head, tail, cross), temperature, precipitation and
-  UV index from Open-Meteo, Visual Crossing or meteoblue, with fallback to a second provider.
+  UV index from Open-Meteo, Visual Crossing or meteoblue, with fallback to a second provider. The forecast wind
+  (10 m above ground) is converted to rider height with the Hellman power law (`wind_shear_exponent` in `config.toml`).
 - **Climb detection** with summits added as course points, and summits moved to the actual high point.
 - **What-if table**: how much faster or slower ±1% (`whatif_pct` in `config.toml`) in weight, power, CdA or Crr makes you.
 - **Course export**: TCX, GPX and FIT; in FIT, course points keep their types (summit, climb categories,

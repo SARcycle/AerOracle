@@ -9,6 +9,7 @@ Read from config.toml next to this file (see config.example.toml), each value ov
     publish_url  AERORACLE_PUBLISH_URL  ... and prints download links below this URL (both needed for publishing)
     source_url   AERORACLE_SOURCE_URL   Optional: source code repository, linked in the web app's footer (AGPL section 13)
     whatif_pct   AERORACLE_WHATIF_PCT   Change of each parameter in the what-if table [%] (default 1)
+    wind_shear_exponent  AERORACLE_WIND_SHEAR_EXPONENT  Hellman exponent from 10 m wind to rider height (default 0.2, 0 = off)
 """
 import os
 import tempfile
@@ -25,6 +26,7 @@ _DEFAULTS = {
     'publish_url': None,
     'source_url': None,
     'whatif_pct': 1.0,
+    'wind_shear_exponent': 0.2,
 }
 
 
@@ -48,3 +50,4 @@ PUBLISH_URL: str | None = _settings['publish_url'].rstrip('/') if _settings['pub
 PUBLISHING = bool(PUBLISH_DIR and PUBLISH_URL)
 SOURCE_URL: str | None = _settings['source_url']
 WHATIF_PCT: float = abs(float(_settings['whatif_pct']))
+WIND_SHEAR_EXPONENT: float = abs(float(_settings['wind_shear_exponent']))

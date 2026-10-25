@@ -31,7 +31,7 @@ POINT_COLUMNS = {
     # 'speed_ms'                      # Estimated speed [m/s]                        (speedcalculation)
     # 'temperature_c'                 # Air temperature [°C]                         (weather)
     # 'wind_direction_deg'            # Wind direction (where it blows from) [°]     (weather)
-    # 'wind_speed_ms'                 # Wind speed [m/s]                             (weather)
+    # 'wind_speed_ms'                 # Wind speed at rider height [m/s]             (weather)
     # 'is_forecast_point'             # True where a forecast was requested          (weather)
     # 'relative_humidity'             # Relative humidity [0.0-1.0]                  (weather, Open-Meteo only)
     # 'surface_pressure_hpa'          # Surface pressure [hPa]                       (weather, Open-Meteo only)

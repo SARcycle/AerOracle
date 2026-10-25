@@ -12,10 +12,13 @@ import numpy as np
 import polars as pl
 from scipy.interpolate import interp1d
 
+import config
 from parameters import WeatherProvider
 from weather import meteoblue, openmeteo, visualcrossing
 
 FORECAST_INTERVAL_S = 600  # Request a forecast every 10 min of ride time
+FORECAST_WIND_HEIGHT_M = 10  # Height of the forecast wind above ground
+RIDER_HEIGHT_M = 1.2  # Height of the rider's torso, where the wind acts (Martin et al. 1998 measured it there)
 
 # Columns of the provider results: one row per forecast point, NaN where a provider has no value
 SAMPLE_COLUMNS = {
@@ -198,6 +201,8 @@ def add_weather(assets, parameters) -> bool:
         forecast_idx, forecast_time = forecast_points(assets.track, parameters.time)
         samples = get_samples(parameters, assets.track, forecast_idx, forecast_time)
         interpolate_to_track(assets.track, forecast_idx, samples)
+        # Hellman power law: wind at rider height
+        assets.track.set(wind_speed_ms=assets.track['wind_speed_ms'] * (RIDER_HEIGHT_M / FORECAST_WIND_HEIGHT_M) ** config.WIND_SHEAR_EXPONENT)
     except Exception as e:
         print('\t- Retrieval of weather information not successful. Continuing without weather information.')
         setattr(parameters, 'time', False)
