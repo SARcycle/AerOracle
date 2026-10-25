@@ -634,9 +634,9 @@ def rail():
             # Bike presets: kept, but hidden for now
             html.Div(segmented('rider-preset', list(RIDER_PRESETS), 'Road'), hidden=True),
             html.Div([html.Div([html.Span("Power", className='ao-label'), html.Span("W", className='ao-hint')], className='ao-unit-row'),
-                      html.Div([field("Flat", number('power-flat', DEFAULTS['power'][0], 1, max=3000), 'power-flat'),
-                                field("Uphill", number('power-up', DEFAULTS['power'][1], 1, max=3000), 'power-up'),
-                                field("Downhill", number('power-down', DEFAULTS['power'][2], 1, max=3000), 'power-down')], className='ao-fields')]),
+                      html.Div([field("Flat", number('power-flat', DEFAULTS['power'][0], 'any', max=3000), 'power-flat'),
+                                field("Uphill", number('power-up', DEFAULTS['power'][1], 'any', max=3000), 'power-up'),
+                                field("Downhill", number('power-down', DEFAULTS['power'][2], 'any', max=3000), 'power-down')], className='ao-fields')]),
             html.Div([html.Div([html.Span("CdA", className='ao-label'), html.Span("m²", className='ao-hint')], className='ao-unit-row'),
                       html.Div([field("Flat", number('cda-flat', DEFAULTS['cda'][0], 0.005, max=1), 'cda-flat'),
                                 field("Uphill", number('cda-up', DEFAULTS['cda'][1], 0.005, max=1), 'cda-up'),
@@ -889,6 +889,7 @@ def analysis_outputs(example, input_method, upload_contents, upload_filename, ur
             return error("Please enter the start date and time (24 h, HH:MM) for the weather forecast.")
         start = datetime.combine(date.fromisoformat(start_date), parse_time(start_time))  # Local time at the route start
 
+    power_flat, power_up, power_down = (round(power) for power in (power_flat, power_up, power_down))  # Whole watts
     settings = dict(power_flat=power_flat, power_up=power_up, power_down=power_down, weight=weight,
                     cda_flat=cda_flat, cda_up=cda_up, cda_down=cda_down, rr_type=rr_type,
                     crr=rr_value if rr_type == "Crr" else rr_value / PRR_PER_CRR, climbs=climbs, start_time=start,
