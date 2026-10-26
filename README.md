@@ -78,7 +78,7 @@ For a server, run it with gunicorn behind a reverse proxy (nginx, Caddy). Keep a
 analyses and their progress live in the worker's memory.
 
 ```sh
-uv run gunicorn app:server --workers 1 --threads 4 --timeout 600 --bind 127.0.0.1:8050
+uv run gunicorn app:server --workers 1 --threads 8 --timeout 600 --bind 127.0.0.1:8050
 ```
 
 The start page offers an example route (Tour de France 2022, stage 12) with stored weather, so it can be tried

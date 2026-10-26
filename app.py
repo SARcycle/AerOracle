@@ -2,7 +2,7 @@
 AerOracle web front end (Dash).
 
 Development:  python app.py                      (http://127.0.0.1:8050)
-Production:   gunicorn app:server --workers 1 --threads 4 --timeout 600 --bind 127.0.0.1:8050
+Production:   gunicorn app:server --workers 1 --threads 8 --timeout 600 --bind 127.0.0.1:8050
 """
 import base64
 import json
@@ -37,7 +37,7 @@ APP_DIR = Path(__file__).parent
 WORK_DIR = Path(tempfile.gettempdir()) / 'aeroracle'  # One sub folder per analysis, holding the processed TCX/GPX/FIT
 WORK_RETENTION_S = 30 * 60   # Processed files are deleted after 30 min (legal notice: within 60 min)
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-ANALYSIS_SLOTS = threading.BoundedSemaphore(2)  # Concurrent analyses (2 cores, 2 GB RAM)
+ANALYSIS_SLOTS = threading.BoundedSemaphore(2)  # Concurrent analyses: CPU-bound, one per core (2 cores)
 RWGPS_URL = re.compile(r'ridewithgps\.com/(routes|trips)/(\d+)')
 PRR_PER_CRR = 8 * 416.925  # Rolling resistance power [W] at 8 m/s per unit Crr (bicyclerollingresistance.com)
 
