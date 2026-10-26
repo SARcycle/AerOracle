@@ -21,3 +21,6 @@ outputs/
 
 # Editor settings
 .vscode/
+
+# Private notes
+docs/feature-ideas.md

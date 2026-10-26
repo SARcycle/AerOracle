@@ -19,8 +19,7 @@ It runs as a web app or on the command line, and writes the course back as TCX, 
   (10 m above ground) is converted to rider height with the Hellman power law (`wind_shear_exponent` in `config.toml`).
 - **Climb detection** with summits added as course points, and summits moved to the actual high point.
 - **What-if table**: how much faster or slower ±1% (`whatif_pct` in `config.toml`) in weight, power, CdA or Crr makes you.
-- **Course export**: TCX, GPX and FIT; in FIT, course points keep their types (summit, climb categories,
-  turns) instead of collapsing to TCX's limited set.
+- **Course export**: TCX, GPX and FIT.
 
 ## Installation
 
