@@ -165,9 +165,7 @@ try:
             print(f'Multipart -> Singleparts ({os.path.basename(file).replace("_merged.shp", "").capitalize()}', end="")
             start_time = time.time()
             
-            # Run multi2single.py - no sudo needed if permissions are correct
-            cmd = f'{sys.executable} {osm.MULTI2SINGLE} {file} {file.replace(".shp", "_MultiPoly.shp")}'
-            result = os.system(f'{cmd} > /dev/null 2>&1')
+            result = osm.multi_to_single(file, file.replace(".shp", "_MultiPoly.shp"))
             
             if result != 0:
                 print(f' FAILED!')
@@ -175,7 +173,7 @@ try:
                 print(f'  Return code: {result}')
                 if os.geteuid() != 0:
                     print(f'  Hint: If permission denied, run fix_ownership_once.sh as root first')
-                raise Exception(f'multi2single.py failed with code {result}')
+                raise Exception(f'ogr2ogr (multipart -> singleparts) failed with code {result}')
             else:
                 output_size = os.path.getsize(file.replace(".shp", "_MultiPoly.shp"))
                 print(f'; {utilities.sizeof_fmt(os.path.getsize(file))} --> {utilities.sizeof_fmt(output_size)}; {time.time()-start_time:0.3f} s)')

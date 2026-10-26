@@ -11,7 +11,11 @@ import config
 import utilities
 
 TMP_DIR = os.path.join(config.TEMP_DIR, 'OSM')  # Extracts of up to a few GB: temp_dir must be on disk, not a small tmpfs
-MULTI2SINGLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'multi2single.py')
+
+
+def multi_to_single(source, target):
+    """Split the multi-part polygons of a shapefile into single parts (WGS84). Returns the exit status of ogr2ogr (0 = success)."""
+    return os.system(f'ogr2ogr -overwrite -explodecollections -nlt POLYGON -a_srs EPSG:4326 {target} {source}')
 
 
 def download_extract_buffer_tunnels(ctry_name, continentcntry, url, savepath=None, searchparameters='--keep-ways= --keep-relations= --keep=" ( highway=*ary* =unclassified =residential =living_street =pedestrian =road =cycleway ) and tunnel=yes" --drop="bicycle=no"', bufferdistance=0.000354):
@@ -346,8 +350,8 @@ def outlines_from_kml(csv_path):
     dissolved_files = sorted(glob.glob(os.path.join(output_folder, '*_dissolved.shp')))
     for file in dissolved_files:
         print(f'Multipart -> Singleparts ({os.path.basename(file).replace("_merged_dissolved.shp", "").capitalize()})')
-        os.system(
-            f'{sys.executable} {MULTI2SINGLE} {file} {file.replace(".shp", "_MultiPoly.shp")}')
+        if multi_to_single(file, file.replace(".shp", "_MultiPoly.shp")) != 0:
+            raise RuntimeError(f'Multipart -> Singleparts failed for {file}')
 
     all_files = sorted(glob.glob(os.path.join(output_folder, '*')))
 
