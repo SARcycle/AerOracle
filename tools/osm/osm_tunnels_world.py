@@ -117,6 +117,13 @@ try:
     try:
         print('Fetching List of assets on download.geofabrik.de')
         geofabrik_update.create_csv(csv_path=csv_path, buffer_distance_meters=30)
+        regions = sys.argv[1:]  # Optional: only these regions (CSV column name), e.g. for testing with AERORACLE_DATA_DIR elsewhere
+        if regions:
+            with open(csv_path) as f:
+                lines = f.readlines()
+            with open(csv_path, 'w') as f:
+                f.writelines([lines[0]] + [line for line in lines[1:] if line.split(';')[1] in regions])
+            print(f'Only regions: {", ".join(regions)}')
 
         osm.outlines_from_kml(csv_path)
 
@@ -168,11 +175,7 @@ try:
             result = osm.multi_to_single(file, file.replace(".shp", "_MultiPoly.shp"))
             
             if result != 0:
-                print(f' FAILED!')
-                print(f'  Command: {cmd}')
-                print(f'  Return code: {result}')
-                if os.geteuid() != 0:
-                    print(f'  Hint: If permission denied, run fix_ownership_once.sh as root first')
+                print(' FAILED!')
                 raise Exception(f'ogr2ogr (multipart -> singleparts) failed with code {result}')
             else:
                 output_size = os.path.getsize(file.replace(".shp", "_MultiPoly.shp"))
@@ -202,6 +205,14 @@ try:
             for file in all_files:
                 if fav in file:
                     os.rename(file, file.replace(fav, f'{fav_counter}_{fav}'))
+
+        # Never swap in (nearly) empty data: compare with the current production version
+        for staging, production in ((staging_tunnels, production_tunnels), (staging_bridges, production_bridges)):
+            new_count = len(glob.glob(os.path.join(staging, '*_MultiPoly.shp')))
+            old_count = len(glob.glob(os.path.join(production, '*_MultiPoly.shp')))
+            if new_count == 0 or new_count < 0.8 * old_count:
+                raise Exception(f'{os.path.basename(production).capitalize()}: only {new_count} new files (currently {old_count}). '
+                                f'Production data kept; check the output above for failed steps.')
 
         # Write data date into the tunnels staging folder (must happen AFTER the
         # non-MultiPoly cleanup above). It is swapped atomically together with the data

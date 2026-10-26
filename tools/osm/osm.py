@@ -288,7 +288,7 @@ def merge_shapefiles(input_folder):
 
         #cmd = f'ogr2ogr -f "ESRI Shapefile" -a_srs EPSG:4326 -t_srs EPSG:4326 {output_merged} {filename}'
         print(f'\t- {filename.replace(".shp","").capitalize()}')
-        cmd = f'ogrmerge.py -single -overwrite_ds -o {output_merged} {os.path.join(input_folder,filename.replace(".shp", "")+"*.shp")} > /dev/null 2>&1'
+        cmd = f'ogrmerge.py -single -overwrite_ds -o {output_merged} {os.path.join(input_folder,filename.replace(".shp", "")+"*.shp")}'
         start_time = time.time()
         os.system(cmd)
         start_size = utilities.sizeof_fmt(sum(os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(input_folder,filename.replace(".shp", "")+"*.shp")))))

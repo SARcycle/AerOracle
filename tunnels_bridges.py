@@ -1,8 +1,8 @@
 import datetime
 import glob
 import os
-import subprocess
 import time
+import zipfile
 
 import numpy as np
 
@@ -54,8 +54,17 @@ def safe_restore_from_archive(file_location, asset_type, folder_prefix):
 
     if latest_archive:
         print(f'- Restoring {asset_type} from archive: {os.path.basename(latest_archive)}')
-        subprocess.run(['unzip', '-q', '-o', latest_archive, '-d', file_location])
-        return True
+        try:
+            os.makedirs(file_location, exist_ok=True)
+            with zipfile.ZipFile(latest_archive) as archive:
+                for member in archive.infolist():
+                    if not member.is_dir():  # Flat into file_location: older archives contain full paths
+                        with archive.open(member) as source, open(os.path.join(file_location, os.path.basename(member.filename)), 'wb') as target:
+                            target.write(source.read())
+        except (OSError, zipfile.BadZipFile) as e:
+            print(f'- Restoring {asset_type} failed: {e}')
+            return False
+        return len(glob.glob(os.path.join(file_location, '*MultiPoly.shp'))) > 0
     else:
         print(f'- No valid archive found for {asset_type}')
         return False
