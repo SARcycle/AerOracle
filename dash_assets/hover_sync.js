@@ -43,6 +43,56 @@
         });
     }
 
+    function mapLibre(mapDiv) {
+        const layout = mapDiv._fullLayout && mapDiv._fullLayout.map;
+        return layout && layout._subplot && layout._subplot.map;
+    }
+
+    // Map cursor as a MapLibre layer of its own: moving it does not make Plotly redraw the route (thousands of points)
+    const CURSOR_SOURCE = 'aeroracle-cursor';
+    const NO_CURSOR = {type: 'FeatureCollection', features: []};
+
+    function setMapCursor(mapDiv, lat, lon) {
+        const map = mapLibre(mapDiv);
+        if (!map) {
+            return;
+        }
+        let source = map.getSource(CURSOR_SOURCE);
+        if (!source) {  // Created on first use, again after a new figure or a style reload
+            if (lat === null || !map.isStyleLoaded()) {
+                return;
+            }
+            const cursorTrace = mapDiv._fullData && mapDiv._fullData[MAP_CURSOR_TRACE];
+            const color = (cursorTrace && cursorTrace.marker && cursorTrace.marker.color) || '#000000';
+            map.addSource(CURSOR_SOURCE, {type: 'geojson', data: NO_CURSOR});
+            map.addLayer({id: CURSOR_SOURCE, type: 'circle', source: CURSOR_SOURCE,
+                          paint: {'circle-radius': 8, 'circle-color': color, 'circle-opacity': 0.9}});
+            source = map.getSource(CURSOR_SOURCE);
+        }
+        source.setData(lat === null ? NO_CURSOR : {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: [lon, lat]}});
+    }
+
+    // At most one update per screen frame, with the latest hover position; nothing if it did not change
+    function perFrame(update) {
+        let pending = null;
+        let last;
+        let scheduled = false;
+        return (value) => {
+            pending = value;
+            if (!scheduled) {
+                scheduled = true;
+                requestAnimationFrame(() => {
+                    scheduled = false;
+                    const key = JSON.stringify(pending);
+                    if (key !== last) {
+                        last = key;
+                        update(pending);
+                    }
+                });
+            }
+        };
+    }
+
     function attach(mapId, profileId, attemptsLeft) {
         const mapDiv = plotlyDiv(mapId);
         const profileDiv = plotlyDiv(profileId);
@@ -59,39 +109,39 @@
         // Listeners survive figure updates of the same graph; the partner graph is looked up per event
         if (!profileDiv._aeroracleHoverSync) {
             profileDiv._aeroracleHoverSync = true;
-            // Profile -> map: customdata of the elevation trace starts with [lat, lon]
-            profileDiv.on('plotly_hover', (event) => {
-                const point = event.points.find((p) => p.curveNumber === PROFILE_ELEVATION_TRACE);
-                const target = plotlyDiv(mapId);
-                if (point && point.customdata && target) {
-                    Plotly.restyle(target, {lat: [[point.customdata[0]]], lon: [[point.customdata[1]]]}, [MAP_CURSOR_TRACE]);
-                }
-            });
-            profileDiv.on('plotly_unhover', () => {
+            // Profile -> map: customdata of the elevation trace starts with [lat, lon]; null = no cursor
+            const moveMapCursor = perFrame((position) => {
                 const target = plotlyDiv(mapId);
                 if (target) {
-                    Plotly.restyle(target, {lat: [[null]], lon: [[null]]}, [MAP_CURSOR_TRACE]);
+                    setMapCursor(target, ...(position || [null, null]));
                 }
             });
+            profileDiv.on('plotly_hover', (event) => {
+                const point = event.points.find((p) => p.curveNumber === PROFILE_ELEVATION_TRACE);
+                if (point && point.customdata) {
+                    moveMapCursor([point.customdata[0], point.customdata[1]]);
+                }
+            });
+            profileDiv.on('plotly_unhover', () => moveMapCursor(null));
         }
 
         if (!mapDiv._aeroracleHoverSync) {
             mapDiv._aeroracleHoverSync = true;
-            // Map -> profile: customdata of the route trace starts with the distance [km]
-            mapDiv.on('plotly_hover', (event) => {
-                const point = event.points.find((p) => p.curveNumber === MAP_ROUTE_TRACE);
-                const target = plotlyDiv(profileId);
-                if (point && point.customdata && target) {
-                    const distance = point.customdata[0];
-                    Plotly.relayout(target, {'shapes[0].x0': distance, 'shapes[0].x1': distance, 'shapes[0].visible': true});
-                }
-            });
-            mapDiv.on('plotly_unhover', () => {
+            // Map -> profile: customdata of the route trace starts with the distance [km]; null = no line
+            const moveProfileLine = perFrame((distance) => {
                 const target = plotlyDiv(profileId);
                 if (target) {
-                    Plotly.relayout(target, {'shapes[0].visible': false});
+                    Plotly.relayout(target, distance === null ? {'shapes[0].visible': false}
+                        : {'shapes[0].x0': distance, 'shapes[0].x1': distance, 'shapes[0].visible': true});
                 }
             });
+            mapDiv.on('plotly_hover', (event) => {
+                const point = event.points.find((p) => p.curveNumber === MAP_ROUTE_TRACE);
+                if (point && point.customdata) {
+                    moveProfileLine(point.customdata[0]);
+                }
+            });
+            mapDiv.on('plotly_unhover', () => moveProfileLine(null));
         }
     }
 
