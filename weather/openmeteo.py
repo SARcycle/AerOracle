@@ -27,7 +27,7 @@ def getOpenMeteoForecast(lat, lon, elevation, forecast_time):
     import weather
 
     # Setup the Open-Meteo API client with cache and retry on error
-    cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
+    cache_session = requests_cache.CachedSession('.cache', expire_after=3600, allowable_methods=('GET', 'POST'))
     retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
     openmeteo = openmeteo_requests.Client(session=retry_session)
 
@@ -82,7 +82,7 @@ def getOpenMeteoForecast(lat, lon, elevation, forecast_time):
     params = {
         "latitude":         lat,
         "longitude":        lon,
-        "elevation":        elevation,
+        "elevation":        np.round(elevation),
         "wind_speed_unit":  "ms",
         "temperature_unit": "celsius",
         "timeformat":       "iso8601",
@@ -92,7 +92,7 @@ def getOpenMeteoForecast(lat, lon, elevation, forecast_time):
     if TRACKING_ENABLED:
         with track_resources() as monitor:
             try:
-                responses = openmeteo.weather_api(url, params={**params, **specific_params})
+                responses = openmeteo.weather_api(url, params={**params, **specific_params}, method='POST')  # Body instead of URL: no length limit for long routes
                 api_success = True
             except Exception as e:
                 api_success = False
@@ -128,7 +128,7 @@ def getOpenMeteoForecast(lat, lon, elevation, forecast_time):
                 if metrics.memory_percent_max > 80:
                     print("\t     Warning: high RAM usage")
     else:
-        responses = openmeteo.weather_api(url, params={**params, **specific_params})
+        responses = openmeteo.weather_api(url, params={**params, **specific_params}, method='POST')  # Body instead of URL: no length limit for long routes
 
     samples = []
     for idx, response_location in enumerate(responses): # Iterate through all the locations requested
