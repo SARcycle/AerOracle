@@ -93,6 +93,37 @@
         };
     }
 
+    // Route readability on the OpenStreetMap background (also for light colors such as the flat gradient band):
+    // base map with less color, and a white casing under the route
+    const BASE_MAP_SATURATION = -0.6;
+    const CASING = 'aeroracle-casing';
+
+    function styleMap(mapDiv) {
+        const map = mapLibre(mapDiv);
+        const route = mapDiv._fullData && mapDiv._fullData[MAP_ROUTE_TRACE];
+        if (!map || !route) {
+            return;
+        }
+        const apply = () => {
+            const layers = map.getStyle().layers;
+            layers.filter((layer) => layer.type === 'raster').forEach((layer) => map.setPaintProperty(layer.id, 'raster-saturation', BASE_MAP_SATURATION));
+            const line = {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: Array.from(route.lon, (lon, i) => [lon, route.lat[i]])}};
+            if (map.getSource(CASING)) {
+                map.getSource(CASING).setData(line);  // New route in the same map
+            } else {
+                const firstTrace = layers.find((layer) => layer.id.startsWith('plotly-trace-layer'));
+                map.addSource(CASING, {type: 'geojson', data: line});
+                map.addLayer({id: CASING, type: 'line', source: CASING, layout: {'line-join': 'round', 'line-cap': 'round'},
+                              paint: {'line-color': '#ffffff', 'line-width': 9}}, firstTrace && firstTrace.id);  // Below the route
+            }
+        };
+        if (map.isStyleLoaded()) {
+            apply();
+        } else {
+            map.once('idle', apply);
+        }
+    }
+
     // Map extent covering the route between km0 and km1 (whole route if km0 is null); customdata[0] of the route is the distance
     function fitMapToDistance(mapDiv, km0, km1) {
         const map = mapLibre(mapDiv);
@@ -139,6 +170,7 @@
             return;
         }
         addSummitIcon(mapDiv);
+        styleMap(mapDiv);
         if (window.aeroracleApplyPlotTheme) {
             window.aeroracleApplyPlotTheme();  // Light/dark colors of the new figures (theme.js)
         }
@@ -209,6 +241,7 @@
                 Plotly.restyle(mapDiv, {
                     'marker.color': [option.color], 'marker.colorscale': [option.colorscale],
                     'marker.cmin': option.cmin, 'marker.cmax': option.cmax, 'marker.colorbar.title.text': option.title,
+                    'marker.colorbar.tickmode': option.tickvals ? 'array' : 'auto', 'marker.colorbar.tickvals': [option.tickvals || null],
                 }, [MAP_ROUTE_TRACE]);
                 // Meaning of the colorbar's ends (plot_interactive.colorbar_end_labels), e.g. tail/head wind
                 const ends = option.ends || ['', ''];

@@ -173,6 +173,15 @@ SUMMIT_SYMBOL = 'aeroracle-summit'  # Mountain icon, added to the map in the bro
 GRADIENT_BANDS = [(-9, '#08306b'), (-6, '#2171b5'), (-3, '#6baed6'), (3, '#9ccf8d'), (6, '#f2c12e'), (9, '#ea7d24'), (math.inf, '#c63a2f')]
 
 
+GRADIENT_SCALE_LIMIT = 12  # Map colorbar from -12% to +12%: the outer bands as wide as the others (3%)
+
+
+def banded_colorscale(colors, limits, cmin, cmax):
+    """Stepped colorscale with the same colors and boundaries as the profile's gradient bands (no blending)."""
+    edges = [0.0] + [(limit - cmin) / (cmax - cmin) for limit in limits] + [1.0]
+    return [[position, color] for k, color in enumerate(colors) for position in (edges[k], edges[k + 1])]
+
+
 def gradient_color(gradient_pct):
     return next(color for limit, color in GRADIENT_BANDS if gradient_pct < limit)
 
@@ -213,10 +222,11 @@ def color_options(parameters, assets):
     """
     d = route_data(parameters, assets)
 
-    def option(values, colorscale, cmin, cmax, title, ends=None):
-        # ends: meaning of the negative (left) and positive (right) end of the colorbar
-        return dict(color=np.round(values, 2).tolist(), colorscale=plotly.colors.get_colorscale(colorscale),
-                    cmin=float(cmin), cmax=float(cmax), title=title, ends=ends)
+    def option(values, colorscale, cmin, cmax, title, ends=None, tickvals=None):
+        # ends: meaning of the negative (left) and positive (right) end of the colorbar; tickvals: fixed colorbar ticks
+        return dict(color=np.round(values, 2).tolist(),
+                    colorscale=colorscale if isinstance(colorscale, list) else plotly.colors.get_colorscale(colorscale),
+                    cmin=float(cmin), cmax=float(cmax), title=title, ends=ends, tickvals=tickvals)
 
     wind_limit = np.round(np.nanmax([4, np.abs(np.percentile(d['wind_speed'], 5)), np.abs(np.percentile(d['wind_speed'], 95))]))
     options = {}
@@ -228,7 +238,9 @@ def color_options(parameters, assets):
     options['Elevation'] = option(d['elevation'], 'Viridis', np.nanmin(d['elevation']), np.nanmax(d['elevation']), "Elevation [m]")
     if d['weather']:
         options['Temperature'] = option(d['temperature'], 'RdYlBu_r', np.nanmin(d['temperature']), np.nanmax(d['temperature']), "Temperature [°C]")
-    options['Gradient'] = option(d['gradient'], 'RdBu_r', -10, 10, "Gradient [%]")
+    colors, limits = gradient_scale()
+    options['Gradient'] = option(d['gradient'], banded_colorscale(colors, limits, -GRADIENT_SCALE_LIMIT, GRADIENT_SCALE_LIMIT),
+                                 -GRADIENT_SCALE_LIMIT, GRADIENT_SCALE_LIMIT, "Gradient [%]", tickvals=limits)
     return options
 
 
@@ -278,7 +290,8 @@ def map_figure(parameters, assets, options, selected, summits=(), theme='light')
         lat=d['lats'],
         mode='lines+markers',
         marker=dict(size=6, color=option['color'], colorscale=option['colorscale'], cmin=option['cmin'], cmax=option['cmax'],
-                    colorbar=COLORBAR | dict(title=dict(text=option['title'], side='top', font=dict(size=13))), showscale=True),
+                    colorbar=COLORBAR | dict(title=dict(text=option['title'], side='top', font=dict(size=13)),
+                                             tickmode='array' if option['tickvals'] else 'auto', tickvals=option['tickvals']), showscale=True),
         line=dict(width=3, color='rgba(100,100,100,0.3)'),
         customdata=np.column_stack(customdata),
         text=d['formatted_elapsed_time'],
