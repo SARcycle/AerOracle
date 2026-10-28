@@ -93,6 +93,42 @@
         };
     }
 
+    // Map extent covering the route between km0 and km1 (whole route if km0 is null); customdata[0] of the route is the distance
+    function fitMapToDistance(mapDiv, km0, km1) {
+        const map = mapLibre(mapDiv);
+        const route = mapDiv._fullData && mapDiv._fullData[MAP_ROUTE_TRACE];
+        if (!map || !route) {
+            return;
+        }
+        let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity;
+        for (let i = 0; i < route.lat.length; i++) {
+            const distance = route.customdata[i][0];
+            if (km0 === null || (distance >= km0 && distance <= km1)) {
+                west = Math.min(west, route.lon[i]); east = Math.max(east, route.lon[i]);
+                south = Math.min(south, route.lat[i]); north = Math.max(north, route.lat[i]);
+            }
+        }
+        if (west <= east) {
+            map.fitBounds([[west, south], [east, north]], {padding: 40, maxZoom: 15, duration: 600});
+        }
+    }
+
+    // Click on a row of the climbs table: zoom the profile (and so the map) to the climb
+    document.addEventListener('click', (event) => {
+        const row = event.target.closest && event.target.closest('.ao-climb-row');
+        const profileDiv = plotlyDiv('route-profile');
+        if (!row || !profileDiv) {
+            return;
+        }
+        const start = Number(row.dataset.start), end = Number(row.dataset.end);
+        const margin = Math.max(0.5, 0.1 * (end - start));
+        profileDiv._aeroracleClimbZoom = true;  // Keeps the row marked (any other zoom clears it)
+        Plotly.relayout(profileDiv, {'xaxis.range': [start - margin, end + margin]});
+        document.querySelectorAll('.ao-climb-row.ao-selected').forEach((r) => r.classList.remove('ao-selected'));
+        row.classList.add('ao-selected');
+        document.getElementById('route-map').scrollIntoView({behavior: 'smooth', block: 'start'});
+    });
+
     function attach(mapId, profileId, attemptsLeft) {
         const mapDiv = plotlyDiv(mapId);
         const profileDiv = plotlyDiv(profileId);
@@ -123,6 +159,24 @@
                 }
             });
             profileDiv.on('plotly_unhover', () => moveMapCursor(null));
+
+            // Profile zoom -> map extent; double click (autorange) -> whole route
+            profileDiv.on('plotly_relayout', (event) => {
+                const target = plotlyDiv(mapId);
+                const range = event['xaxis.range'] || (event['xaxis.range[0]'] !== undefined && [event['xaxis.range[0]'], event['xaxis.range[1]']]);
+                if (!target || !(range || event['xaxis.autorange'])) {
+                    return;  // E.g. the hover line (shapes)
+                }
+                if (range) {
+                    fitMapToDistance(target, Math.min(...range), Math.max(...range));
+                } else {
+                    fitMapToDistance(target, null, null);
+                }
+                if (!profileDiv._aeroracleClimbZoom) {
+                    document.querySelectorAll('.ao-climb-row.ao-selected').forEach((r) => r.classList.remove('ao-selected'));
+                }
+                profileDiv._aeroracleClimbZoom = false;
+            });
         }
 
         if (!mapDiv._aeroracleHoverSync) {

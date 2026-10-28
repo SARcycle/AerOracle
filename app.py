@@ -407,7 +407,8 @@ def climbs_table(args, climbs):
             html.Td(f"{c['top_m']:.0f} m"), html.Td(f"{c['start_km']:.1f}"), html.Td(f"{c['top_km']:.1f}"), html.Td(f"{c['length_km']:.1f} km"),
             html.Td([f"{c['grade_pct']:.1f}%", html.Span(className='ao-gbar', style={
                 'width': f"{max(4, round(c['grade_pct'] * 5))}px", 'background': plot_interactive.gradient_color(c['grade_pct'])})]),
-        ]) for c in climbs]),
+        ], className='ao-climb-row', title="Show this climb in the profile and on the map",
+           **{'data-start': f"{c['start_km']:.3f}", 'data-end': f"{c['top_km']:.3f}"}) for c in climbs]),  # Used by hover_sync.js
     ], className='ao-climbs'), className='ao-tablewrap')
 
 
