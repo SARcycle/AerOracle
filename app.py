@@ -522,7 +522,7 @@ def results_layout(key, args, data, settings, theme='light'):
                       gradient_scale_legend()],
                      style={'display': 'flex', 'justifyContent': 'space-between', 'gap': '12px', 'flexWrap': 'wrap', 'alignItems': 'center'}),
             dcc.Graph(id='route-profile', figure=plot_interactive.profile_figure(args, data, summits, theme=theme), config={'displaylogo': False}),
-            html.Div(f"Hover the profile or the route: both show the same point. Data: {sources}", className='ao-hint'),
+            html.Div(f"Select a stretch to zoom in, double click to zoom out. Data: {sources}", className='ao-hint'),
         ], className='ao-card-body', style={'borderTop': '1px solid var(--ao-line)'}),
         dcc.Store(id='map-color-options', data=options),
     ], className='ao-card')
@@ -571,7 +571,7 @@ def start_page():
         ], className='ao-hero'),
         html.Div([
             html.Div([html.H3("Wind along the route"), html.P("Forecast every 10 minutes of riding time (less often on very long rides), projected onto your direction of travel.")], className='ao-feature'),
-            html.Div([html.H3("Precise elevation"), html.P("swissALTI3D and LiDAR where available, Copernicus worldwide, tunnels and bridges flattened.")], className='ao-feature'),
+            html.Div([html.H3("Precise elevation"), html.P("swissALTI3D and LiDAR where available, Copernicus worldwide; elevation of tunnels and bridges corrected.")], className='ao-feature'),
             html.Div([html.H3("Ready for your head unit"), html.P("TCX, GPX and FIT courses with climbs and turns as cues.")], className='ao-feature'),
         ], className='ao-features'),
     ], className='ao-start')
