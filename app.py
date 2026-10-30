@@ -52,8 +52,8 @@ CORNERING_LEVELS = {  # speedcalculation.CORNERING: accepted lateral acceleratio
 
 CORNERING_HINTS = {  # Hairpin speeds: sqrt(a_lat * g * 10 m); lean angle: arctan(a_lat / g); wet: min(0.75 * a_lat, 0.6 g)
     'cautious': "Brakes early and gently, upright in corners (17° lean): rides a tight hairpin (10 m radius) at ~20 km/h. On wet roads (rain in forecast): 0.23 g.",
-    'average': "Brakes early, moderate lean (24°): rides a tight hairpin (10 m radius) at about ~24 km/h. On wet roads (rain in forecast): 0.34 g.",
-    'confident': "Brakes late, leans well (31°, inside pedal up): rides a tight hairpin (10 m radius) at about ~28 km/h. On wet roads (rain in forecast): 0.45 g.",
+    'average': "Brakes early, moderate lean (24°): rides a tight hairpin (10 m radius) at ~24 km/h. On wet roads (rain in forecast): 0.34 g.",
+    'confident': "Brakes late, leans well (31°, inside pedal up): rides a tight hairpin (10 m radius) at ~28 km/h. On wet roads (rain in forecast): 0.45 g.",
     'racer': "Brakes hard and late, leans close to grip limit (39°): rides a tight hairpin (10 m radius) at ~32 km/h. On wet roads (rain in forecast): 0.60 g (wet grip limit).",
 }
 
