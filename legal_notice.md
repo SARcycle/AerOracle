@@ -1,4 +1,4 @@
-**Last Updated: October 25, 2026**
+**Last Updated: October 30, 2026**
 
 ---
 
@@ -96,7 +96,7 @@ You retain all rights to files you upload. We process them only to provide the a
 
 ## Applicable Law
 
-Swiss law applies.
+Swiss law applies. Place of jurisdiction is Bern, Switzerland.
 
 ---
 
