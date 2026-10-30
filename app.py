@@ -552,7 +552,7 @@ def results_layout(key, args, data, settings, theme='light'):
                   card("Climb" if len(climbs) == 1 else "Climbs", climbs_table(args, climbs), hint=f"{len(climbs)} detected" if args.climbs else None)],
                  className='ao-twocol'),
         *([card("Conditions", conditions(args, data),
-                hint=f"One {utilities.WEATHER_PROVIDER_NAMES[args.weather]} forecast per {weather.FORECAST_INTERVAL_S // 60} min of riding time"
+                hint=f"One {utilities.WEATHER_PROVIDER_NAMES[args.weather]} forecast per {data.weather_summary.forecast_interval_s // 60} min of riding time"
                      + (" (stored for the example)" if settings.get('weather_file') else ""))]
           if has_weather else []),
         card("Take it to your head unit", [

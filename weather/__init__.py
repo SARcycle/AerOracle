@@ -3,6 +3,7 @@ Weather along the route: requests forecasts every 10 min of ride time from the s
 (with fallback), interpolates them to all track points and summarizes them.
 """
 import json
+import math
 import os
 import sys
 from dataclasses import dataclass
@@ -16,7 +17,8 @@ import config
 from parameters import WeatherProvider
 from weather import meteoblue, openmeteo, visualcrossing
 
-FORECAST_INTERVAL_S = 600  # Request a forecast every 10 min of ride time
+FORECAST_INTERVAL_S = 600  # Request a forecast every 10 min of ride time ...
+FORECAST_INTERVAL_STEP_S = 300  # ... longer by 5 min steps while the route needs more than config.MAX_FORECAST_LOCATIONS
 FORECAST_WIND_HEIGHT_M = 10  # Height of the forecast wind above ground
 RIDER_HEIGHT_M = 1.2  # Height of the rider's torso, where the wind acts (Martin et al. 1998 measured it there)
 
@@ -48,6 +50,7 @@ class WeatherSummary:
     sunshine_fraction: float | None = None  # Share of the ride with sunshine [0.0-1.0]
     uv_index_max: float | None = None       # Maximum UV index during the ride
     precipitation_mm: float | None = None   # Total precipitation during the ride [mm]
+    forecast_interval_s: int = FORECAST_INTERVAL_S  # Ride time between two forecast locations
 
 
 def value_at(dates, values, time):
@@ -62,15 +65,24 @@ def value_at(dates, values, time):
 
 
 def forecast_points(track, start_time):
-    """Indices of the track points with a forecast request and their (Unix) forecast times."""
+    """
+    Indices of the track points with a forecast request, their (Unix) forecast times and the interval [s] between them:
+    every FORECAST_INTERVAL_S of ride time, longer in FORECAST_INTERVAL_STEP_S steps for long rides, so that there are
+    at most config.MAX_FORECAST_LOCATIONS (start and finish included; limits the load on the weather APIs).
+    """
     ride_time = track['timestamp']
-    forecast_interval = (ride_time - ride_time[0]) % FORECAST_INTERVAL_S
+    # Locations: one every interval from the start (floor(T / interval) + 1) plus the finish, so at most N for
+    # interval >= T / (N - 2); rounded up to the step
+    duration = ride_time[-1] - ride_time[0]
+    steps = math.ceil(duration / (config.MAX_FORECAST_LOCATIONS - 2) / FORECAST_INTERVAL_STEP_S)
+    interval = max(FORECAST_INTERVAL_S, steps * FORECAST_INTERVAL_STEP_S)
+    forecast_interval = (ride_time - ride_time[0]) % interval
     forecast_idx = np.where(np.diff(forecast_interval) < 0)[0] + 1
     forecast_idx = np.unique(np.append(np.insert(forecast_idx, 0, 0), len(forecast_interval) - 1))
     if start_time == 0:
         start_time = ride_time[0]
     forecast_time = (start_time + (ride_time[forecast_idx] - ride_time[0])).astype(int)
-    return forecast_idx, forecast_time
+    return forecast_idx, forecast_time, interval
 
 
 # Stored hourly weather (examples/build_example_weather.py): Open-Meteo variable -> (sample column, conversion)
@@ -198,7 +210,7 @@ def add_weather(assets, parameters) -> bool:
     Returns False (and sets parameters.time = False) if no weather data could be retrieved.
     """
     try:
-        forecast_idx, forecast_time = forecast_points(assets.track, parameters.time)
+        forecast_idx, forecast_time, interval = forecast_points(assets.track, parameters.time)
         samples = get_samples(parameters, assets.track, forecast_idx, forecast_time)
         interpolate_to_track(assets.track, forecast_idx, samples)
         # Hellman power law: wind at rider height
@@ -209,4 +221,5 @@ def add_weather(assets, parameters) -> bool:
         print_error(e)
         return False
     setattr(assets, 'weather_summary', summarize(parameters.weather, samples, forecast_time))
+    assets.weather_summary.forecast_interval_s = interval
     return True
