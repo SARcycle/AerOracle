@@ -26,7 +26,8 @@ It runs as a web app or on the command line, and writes the course back as TCX, 
   OpenStreetMap data, so the profile doesn't dive into valleys or climb over mountains.
 - **Weather** along the route at the time you pass: wind (head, tail, cross), temperature, precipitation and
   UV index from Open-Meteo, Visual Crossing or meteoblue, with fallback to a second provider. The forecast wind
-  (10 m above ground) is converted to rider height with the Hellman power law (`wind_shear_exponent` in `config.toml`).
+  (10 m above ground) is converted to rider height with a power law whose effective exponent (`wind_shear_exponent`
+  in `config.toml`, default 0.5) accounts for the terrain's roughness and shelter; checked against measured rides.
 - **Climb detection** with summits added as course points, and summits moved to the actual high point.
 - **What-if table**: how much faster or slower ±1% (`whatif_pct` in `config.toml`) in weight, power, CdA or Crr makes you.
 - **Course export**: TCX, GPX and FIT.
@@ -108,9 +109,9 @@ uv run python main.py -i route.tcx -t 2026-07-14T09:00 -k
 | `-p`, `--power` | Power in W: flat, uphill, downhill | 210, 231, 0 |
 | `-m`, `--powerfactor` | Uphill power = flat power × factor, if only one power is given | 1.1 |
 | `-w`, `--weight` | System weight (rider and bike) in kg | 80 |
-| `-c`, `--cda` | Drag area in m²: flat, uphill, downhill | 0.38, 0.40, 0.29 |
+| `-c`, `--cda` | Drag area in m²: flat, uphill, downhill | 0.29, 0.33, 0.25 |
 | `-b`, `--tt` | Time trial bike (CdA 0.23) | |
-| `-r`, `--crr` | Rolling resistance coefficient | 0.00321 |
+| `-r`, `--crr` | Rolling resistance coefficient | 0.0035 |
 | `-g`, `--gradient` | Gradient threshold for uphill/downhill power and CdA | 0.05 |
 | `-a`, `--weather` | Weather provider: `o` Open-Meteo, `m` meteoblue, `v` Visual Crossing | `o` |
 | `-k`, `--climbs` | Detect climbs and add them as course points | |

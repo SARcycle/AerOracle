@@ -9,7 +9,7 @@ Read from config.toml next to this file (see config.example.toml), each value ov
     publish_url  AERORACLE_PUBLISH_URL  ... and prints download links below this URL (both needed for publishing)
     source_url   AERORACLE_SOURCE_URL   Optional: source code repository, linked in the web app's footer (AGPL section 13)
     whatif_pct   AERORACLE_WHATIF_PCT   Change of each parameter in the what-if table [%] (default 1)
-    wind_shear_exponent  AERORACLE_WIND_SHEAR_EXPONENT  Hellman exponent from 10 m wind to rider height (default 0.2, 0 = off)
+    wind_shear_exponent  AERORACLE_WIND_SHEAR_EXPONENT  Effective exponent from 10 m wind to rider height (default 0.5, 0 = off)
     max_forecast_locations  AERORACLE_MAX_FORECAST_LOCATIONS  Weather forecast locations per ride at most (default 50)
     cornering    AERORACLE_CORNERING    Default rider level in corners: cautious, average, confident or racer (default average)
     max_pedalling_speed_kmh  AERORACLE_MAX_PEDALLING_SPEED_KMH  Speed above which riders stop pedalling (default 65)
@@ -29,7 +29,7 @@ _DEFAULTS = {
     'publish_url': None,
     'source_url': None,
     'whatif_pct': 1.0,
-    'wind_shear_exponent': 0.2,
+    'wind_shear_exponent': 0.5,
     'max_forecast_locations': 50,
     'cornering': 'average',
     'max_pedalling_speed_kmh': 65.0,

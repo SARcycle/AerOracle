@@ -131,7 +131,7 @@ class Parameters:
                 if self.cda is not None and len(self.cda) == 1:
                     self.cda = self.cda*3
                 else:
-                    self.cda = [0.38, 0.40, 0.29]
+                    self.cda = [0.29, 0.33, 0.25]
             elif len(self.cda) == 3:
                 pass
         elif self.tt:
@@ -143,7 +143,7 @@ class Parameters:
             elif len(self.cda) == 3:
                 pass
         if self.crr is None:
-            self.crr = 0.00321
+            self.crr = 0.0035
         self.power = PerGradient(*self.power)
         self.cda = PerGradient(*self.cda)
         self.weather = WeatherProvider(self.weather)

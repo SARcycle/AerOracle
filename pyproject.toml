@@ -1,6 +1,6 @@
 [project]
 name = "aeroracle"
-version = "4.1.1"
+version = "4.2.0"
 description = "Cycling aerodynamics calculations and ride time estimations"
 readme = "README.md"
 authors = [

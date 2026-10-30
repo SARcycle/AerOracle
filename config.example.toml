@@ -25,9 +25,12 @@ data_dir = "/data"
 # Change of each parameter (weight, power, CdA, Crr) in the what-if table, in % (default 1)
 # whatif_pct = 1
 
-# Hellman exponent converting the forecast wind (10 m above ground) to rider height (1.2 m): v = v10 * (1.2 / 10)^exponent.
-# About 0.14 for open, flat country, 0.2 with hedges and scattered trees, 0.3 near towns and forests; 0 = no conversion (default 0.2)
-# wind_shear_exponent = 0.2
+# Exponent converting the forecast wind (10 m above ground) to rider height (1.2 m): v = v10 * (1.2 / 10)^exponent.
+# An effective value: so close to the ground, the terrain's roughness and the shelter of trees, hedges and buildings set it,
+# not the stability of the air. 0.5 (35% of the 10 m wind, roughness length about 0.4 m: mixed country with trees,
+# hedges and villages) was checked against about 140 rides measured with power meters. Use about 0.2 for open, flat
+# country or coasts, up to 0.7 for roads mostly through villages and forest; 0 = no conversion (default 0.5)
+# wind_shear_exponent = 0.5
 
 # Weather forecast locations per ride at most (one every 10 min of ride time; on longer rides the interval grows in 5 min steps).
 # Limits the load on the weather APIs, whose free quotas all users share (default 50: unchanged up to about 8 h)

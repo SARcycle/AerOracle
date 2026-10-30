@@ -214,7 +214,7 @@ def add_weather(assets, parameters) -> bool:
         forecast_idx, forecast_time, interval = forecast_points(assets.track, parameters.time)
         samples = get_samples(parameters, assets.track, forecast_idx, forecast_time)
         interpolate_to_track(assets.track, forecast_idx, samples)
-        # Hellman power law: wind at rider height
+        # Power law with an effective exponent (terrain roughness and shelter): wind at rider height
         assets.track.set(wind_speed_ms=assets.track['wind_speed_ms'] * (RIDER_HEIGHT_M / FORECAST_WIND_HEIGHT_M) ** config.WIND_SHEAR_EXPONENT)
     except Exception as e:
         print('\t- Retrieval of weather information not successful. Continuing without weather information.')
