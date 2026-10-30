@@ -4,7 +4,10 @@
 weight and aerodynamics, using the best available elevation data and the weather forecast for your start time.
 It runs as a web app or on the command line, and writes the course back as TCX, GPX and FIT for your head unit.
 
-![AerOracle showing the example route: key figures, route map colored by head and tail wind, elevation profile](docs/screenshot.webp)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.webp">
+  <img alt="AerOracle showing the example route: key figures, route map colored by head and tail wind, elevation profile" src="docs/screenshot-light.webp">
+</picture>
 
 ## What it does
 
