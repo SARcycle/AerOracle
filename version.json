@@ -1,8 +1,8 @@
 {
     "version_backend": {
-        "number": "4.1.0"
+        "number": "4.1.1"
     },
     "version_frontend": {
-        "number": "2.1.0"
+        "number": "2.1.1"
     }
 }
