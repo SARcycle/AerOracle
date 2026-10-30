@@ -68,6 +68,11 @@ weather conditions along a cycling route.
 ### Scientific Basis
 Martin, J. C., Milliken, D. L., Cobb, J. E., McFadden, K. L., & Coggan, A. R. (1998). Validation of a Mathematical Model for Road Cycling Power. Journal of Applied Biomechanics, 14(3), 276-291. [https://doi.org/10.1123/jab.14.3.276](https://doi.org/10.1123/jab.14.3.276)
 """
+SOURCE_CODE = f"""
+### Source Code
+AerOracle is free software under the GNU Affero General Public License (AGPL-3.0). The source code is available at
+[{config.SOURCE_URL}]({config.SOURCE_URL}).
+""" if config.SOURCE_URL else ""
 
 DATA_SOURCES = """
 - **Weather**
@@ -692,7 +697,7 @@ def serve_layout():
                      " · Developed for cycling nerds just like me", html.Br(),
                      f"Backend {version_backend} · Frontend {version_frontend}{osm_info}"],
                     className='ao-footer'),
-        modal('about-modal', "About AerOracle", ABOUT),
+        modal('about-modal', "About AerOracle", ABOUT + SOURCE_CODE),
         modal('sources-modal', "Data sources", DATA_SOURCES),
         modal('legal-modal', "Legal notice", (APP_DIR / 'legal_notice.md').read_text()),
         dcc.Store(id='analysis-key'),

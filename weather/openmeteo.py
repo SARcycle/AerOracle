@@ -3,7 +3,7 @@ import polars as pl
 from datetime import datetime
 import openmeteo_requests
 from openmeteo_sdk.Variable import Variable
-import requests_cache
+import requests
 from retry_requests import retry
 import os, sys
 
@@ -26,9 +26,8 @@ def getOpenMeteoForecast(lat, lon, elevation, forecast_time):
     """
     import weather
 
-    # Setup the Open-Meteo API client with cache and retry on error
-    cache_session = requests_cache.CachedSession('.cache', expire_after=3600, allowable_methods=('GET', 'POST'))
-    retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+    # Open-Meteo API client with retry on error; no cache, so no route coordinates are kept on disk
+    retry_session = retry(requests.Session(), retries=5, backoff_factor=0.2)
     openmeteo = openmeteo_requests.Client(session=retry_session)
 
     print("\t- Getting Weather Data ({0:.0f} queries from Open-Meteo)".format(len(lat)))
