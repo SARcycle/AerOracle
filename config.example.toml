@@ -1,6 +1,7 @@
 # Copy to config.toml and adapt. Every value can also be set by an environment variable
 # (AERORACLE_DATA_DIR, AERORACLE_TEMP_DIR, AERORACLE_INPUT_DIR, AERORACLE_PUBLISH_DIR, AERORACLE_PUBLISH_URL,
-# AERORACLE_SOURCE_URL, AERORACLE_WHATIF_PCT, AERORACLE_WIND_SHEAR_EXPONENT, AERORACLE_MAX_FORECAST_LOCATIONS).
+# AERORACLE_SOURCE_URL, AERORACLE_WHATIF_PCT, AERORACLE_WIND_SHEAR_EXPONENT, AERORACLE_MAX_FORECAST_LOCATIONS,
+# AERORACLE_CORNERING, AERORACLE_MAX_PEDALLING_SPEED_KMH).
 
 # Folder that contains GeoData/ (DEM/, OSM/, Gravimetry/)
 data_dir = "/data"
@@ -31,3 +32,10 @@ data_dir = "/data"
 # Weather forecast locations per ride at most (one every 10 min of ride time; on longer rides the interval grows in 5 min steps).
 # Limits the load on the weather APIs, whose free quotas all users share (default 50: unchanged up to about 8 h)
 # max_forecast_locations = 50
+
+# Default rider level in corners (lateral acceleration accepted / braking): cautious (0.30 g / 0.30 g), average (0.45 / 0.40),
+# confident (0.60 / 0.50) or racer (0.80 / 0.60); the tyre grip (0.9 g) limits every level (default average)
+# cornering = "average"
+
+# Speed above which riders stop pedalling (cadence limit with the largest gear, e.g. 53-11 at about 110 rpm) (default 65)
+# max_pedalling_speed_kmh = 65

@@ -11,6 +11,8 @@ Read from config.toml next to this file (see config.example.toml), each value ov
     whatif_pct   AERORACLE_WHATIF_PCT   Change of each parameter in the what-if table [%] (default 1)
     wind_shear_exponent  AERORACLE_WIND_SHEAR_EXPONENT  Hellman exponent from 10 m wind to rider height (default 0.2, 0 = off)
     max_forecast_locations  AERORACLE_MAX_FORECAST_LOCATIONS  Weather forecast locations per ride at most (default 50)
+    cornering    AERORACLE_CORNERING    Default rider level in corners: cautious, average, confident or racer (default average)
+    max_pedalling_speed_kmh  AERORACLE_MAX_PEDALLING_SPEED_KMH  Speed above which riders stop pedalling (default 65)
 """
 import os
 import tempfile
@@ -29,6 +31,8 @@ _DEFAULTS = {
     'whatif_pct': 1.0,
     'wind_shear_exponent': 0.2,
     'max_forecast_locations': 50,
+    'cornering': 'average',
+    'max_pedalling_speed_kmh': 65.0,
 }
 
 
@@ -54,3 +58,5 @@ SOURCE_URL: str | None = _settings['source_url']
 WHATIF_PCT: float = abs(float(_settings['whatif_pct']))
 WIND_SHEAR_EXPONENT: float = abs(float(_settings['wind_shear_exponent']))
 MAX_FORECAST_LOCATIONS: int = max(2, int(_settings['max_forecast_locations']))
+CORNERING: str = _settings['cornering']
+MAX_PEDALLING_SPEED_KMH: float = float(_settings['max_pedalling_speed_kmh'])

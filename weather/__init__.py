@@ -41,6 +41,7 @@ TRACK_COLUMNS = {
     'wind_speed_ms': 'quadratic',
     'relative_humidity': 'slinear',
     'surface_pressure_hpa': 'slinear',
+    'precipitation_mm_s': 'slinear',
 }
 
 

@@ -63,6 +63,8 @@ class Parameters:
         parse.add_argument('-k', '--climbs', action='store_true', help='Automatic Climb detection and annotation as a cue')
         parse.add_argument('-s', '--whatif', type=float, help='Change of each parameter in the what-if table [%%]; Default: whatif_pct in config.toml (1)',
                            default=config.WHATIF_PCT)
+        parse.add_argument('-l', '--cornering', choices=['cautious', 'average', 'confident', 'racer'], default=config.CORNERING,
+                           help='Rider level in corners (lateral acceleration and braking); Default: cornering in config.toml (average)')
         parse.add_argument('--check-data', action='store_true', help='Report the available data sets, credentials and programs, then exit')
 
         args = parse.parse_args(argv)
@@ -81,6 +83,7 @@ class Parameters:
         self.__setattr__('weather', args.weather)
         self.__setattr__('dem', [])
         self.__setattr__('climbs', args.climbs)
+        self.__setattr__('cornering', args.cornering)
         self.__setattr__('check_data', args.check_data)
         self.__setattr__('whatif_pct', abs(args.whatif))
 

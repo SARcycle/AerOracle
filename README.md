@@ -14,6 +14,12 @@ It runs as a web app or on the command line, and writes the course back as TCX, 
 - **Physics model** after Martin et al. (1998): power, system weight, drag area (CdA), rolling resistance
   (Crr, or Prr from bicyclerollingresistance.com), gravity, air density and wind. Power and CdA can differ
   between flat, uphill and downhill sections (gradient threshold `--gradient`, default 5%).
+- **Corners and momentum:** speed limit in every corner from its radius and the rider's cornering level
+  (lateral acceleration, capped by tyre grip), braking before corners and accelerating out of them with the
+  rider's power, including the kinetic energy of rider, bike and rotating wheels (Martin et al. 1998, Eq. 12),
+  so speed is carried into short climbs. No pedalling above about 30° lean or 65 km/h (cadence limit).
+  With the weather forecast, roads count as wet where at least 0.2 mm of rain fell in the preceding hour:
+  tyre grip 0.6 g instead of 0.9 g, and 75% of the rider's cornering and braking level.
 - **Elevation** from the most detailed model covering each point: swissALTI3D, Sonny's LiDAR DTMs, Copernicus
   DEM, ALOS AW3D30, EU-DEM, ASTER GDEM, SRTM. Elevations in tunnels and on bridges are corrected with
   OpenStreetMap data, so the profile doesn't dive into valleys or climb over mountains.
@@ -107,6 +113,7 @@ uv run python main.py -i route.tcx -t 2026-07-14T09:00 -k
 | `-g`, `--gradient` | Gradient threshold for uphill/downhill power and CdA | 0.05 |
 | `-a`, `--weather` | Weather provider: `o` Open-Meteo, `m` meteoblue, `v` Visual Crossing | `o` |
 | `-k`, `--climbs` | Detect climbs and add them as course points | |
+| `-l`, `--cornering` | Rider level in corners: `cautious`, `average`, `confident`, `racer` | `cornering` (`average`) |
 | `-s`, `--whatif` | Change of each parameter in the what-if table, in % | `whatif_pct` (1) |
 | `-q`, `--quiet` | Less output | |
 | `--check-data` | Report available data, credentials and programs | |

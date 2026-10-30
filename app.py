@@ -47,6 +47,16 @@ EXAMPLE_ROUTE = APP_DIR / 'examples' / 'tdf2022_stage12.json'
 EXAMPLE_WEATHER = APP_DIR / 'examples' / 'tdf2022_stage12_weather.json'
 EXAMPLE_START = datetime(2022, 7, 14, 12, 15)
 
+CORNERING_LEVELS = {  # speedcalculation.CORNERING: accepted lateral acceleration, braking
+    'cautious': "Cautious (0.30 g in corners)", 'average': "Average (0.45 g)", 'confident': "Confident (0.60 g)", 'racer': "Racer (0.80 g)"}
+
+CORNERING_HINTS = {  # Hairpin speeds: sqrt(a_lat * g * 10 m); lean angle: arctan(a_lat / g); wet: min(0.75 * a_lat, 0.6 g)
+    'cautious': "Brakes early and gently, upright in corners (17° lean): a tight hairpin (10 m radius) at about 20 km/h. Wet roads (rain in the forecast): 0.23 g.",
+    'average': "Brakes before the corner, moderate lean (24°): a tight hairpin (10 m radius) at about 24 km/h. Wet roads (rain in the forecast): 0.34 g.",
+    'confident': "Brakes late, leans well (31°, inside pedal up): a tight hairpin (10 m radius) at about 28 km/h. Wet roads (rain in the forecast): 0.45 g.",
+    'racer': "Brakes hard and late, leans close to the grip limit (39°): a tight hairpin (10 m radius) at about 32 km/h. Wet roads (rain in the forecast): 0.60 g, the wet grip limit.",
+}
+
 DEFAULTS = dict(power=(205, 225, 0), cda=(0.35, 0.40, 0.29), weight=82.0, crr=0.00321)
 # Bike presets, not shown yet (the chips are hidden). Gravel values are placeholders to be confirmed.
 RIDER_PRESETS = {
@@ -280,6 +290,7 @@ def analyze(route_path, settings):
         '--weight', str(settings['weight']),
         '--cda', str(settings['cda_flat']), str(settings['cda_up']), str(settings['cda_down']),
         '--crr', str(settings['crr']),
+        '--cornering', settings['cornering'],
         '--quiet',
     ]
     if settings['climbs']:
@@ -648,6 +659,12 @@ def rail():
                 html.Div([segmented('rr-type', ["Crr", "Prr"], "Crr"), number('rr-value', DEFAULTS['crr'], 0.0001)], className='ao-rr'),
                 html.Span(rolling_resistance_hint("Crr"), id='rr-hint', className='ao-hint'),
             ], className='ao-field'),
+            html.Div([
+                html.Label("Cornering style", htmlFor='cornering'),
+                dbc.Select(id='cornering', size='sm', value=config.CORNERING, options=[
+                    {'label': label, 'value': value} for value, label in CORNERING_LEVELS.items()]),
+                html.Span(CORNERING_HINTS.get(config.CORNERING, ''), id='cornering-hint', className='ao-hint'),
+            ], className='ao-field'),
         ]),
         step("3", "Options", [
             dbc.Switch(id='climbs', label="Detect climbs", value=True),
@@ -782,6 +799,11 @@ def convert_rolling_resistance(rr_type, value):
             rolling_resistance_hint("Crr"))
 
 
+@app.callback(Output('cornering-hint', 'children'), Input('cornering', 'value'))
+def cornering_hint(level):
+    return CORNERING_HINTS.get(level, CORNERING_HINTS[config.CORNERING if config.CORNERING in CORNERING_HINTS else 'average'])
+
+
 for modal_id, button_id in (('about-modal', 'open-about'), ('sources-modal', 'open-sources'), ('legal-modal', 'open-legal')):
     app.callback(Output(modal_id, 'is_open'), Input(button_id, 'n_clicks'), prevent_initial_call=True)(lambda n_clicks: True)
 
@@ -843,7 +865,7 @@ def show_progress(n_intervals, job):
     State('course-rename', 'value'), State('course-name', 'value'),
     State('power-flat', 'value'), State('power-up', 'value'), State('power-down', 'value'),
     State('weight', 'value'), State('cda-flat', 'value'), State('cda-up', 'value'), State('cda-down', 'value'),
-    State('rr-type', 'value'), State('rr-value', 'value'), State('climbs', 'value'),
+    State('rr-type', 'value'), State('rr-value', 'value'), State('cornering', 'value'), State('climbs', 'value'),
     State('weather-on', 'value'), State('start-date', 'date'), State('start-time', 'value'), State('theme', 'data'),
     prevent_initial_call=True,
 )
@@ -859,7 +881,7 @@ def run_analysis(job, *inputs):
 
 def analysis_outputs(example, input_method, upload_contents, upload_filename, url, course_rename, course_name,
                      power_flat, power_up, power_down, weight, cda_flat, cda_up, cda_down,
-                     rr_type, rr_value, climbs, weather_on, start_date, start_time, theme):
+                     rr_type, rr_value, cornering, climbs, weather_on, start_date, start_time, theme):
     """Outputs of run_analysis except for the progress panel: results, analysis key and the rail values for the example."""
     unchanged = (dash.no_update,) * 4
 
@@ -895,6 +917,7 @@ def analysis_outputs(example, input_method, upload_contents, upload_filename, ur
     settings = dict(power_flat=power_flat, power_up=power_up, power_down=power_down, weight=weight,
                     cda_flat=cda_flat, cda_up=cda_up, cda_down=cda_down, rr_type=rr_type,
                     crr=rr_value if rr_type == "Crr" else rr_value / PRR_PER_CRR, climbs=climbs, start_time=start,
+                    cornering=cornering if cornering in CORNERING_LEVELS else config.CORNERING,
                     weather_file=str(EXAMPLE_WEATHER) if example and EXAMPLE_WEATHER.exists() else None)
 
     key = uuid.uuid4().hex

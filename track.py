@@ -37,6 +37,8 @@ POINT_COLUMNS = {
     # 'surface_pressure_hpa'          # Surface pressure [hPa]                       (weather, Open-Meteo only)
     # 'air_density_kgm3'              # Air density [kg/m³]                          (speedcalculation)
     # 'headwind_ms'                   # Wind projected on riding direction [m/s], >0 = head wind (speedcalculation)
+    # 'precipitation_mm_s'            # Precipitation rate [mm/s]                    (weather)
+    # 'curve_radius_m'                # Curve radius of the route [m], inf = straight (speedcalculation)
     # 'yaw_angle_deg'                 # Apparent wind yaw angle [°], >0 = from right (speedcalculation)
 }
 
