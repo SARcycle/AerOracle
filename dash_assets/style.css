@@ -156,8 +156,6 @@ h1, h2, h3, h4 { font-family: var(--ao-font-display); font-weight: 600; letter-s
 .ao-bar.slower { background: var(--ao-slower); }
 .ao-bar-label { position: absolute; font-family: var(--ao-font-data); font-size: 11.5px; color: var(--ao-ink-2); white-space: nowrap; line-height: 15px; }
 .ao-whatif-axis { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; }
-.ao-whatif-ticks { position: relative; height: 16px; font-family: var(--ao-font-data); font-size: 11px; color: var(--ao-ink-3); white-space: nowrap; }
-.ao-whatif-ticks span { position: absolute; transform: translateX(-50%); }
 .ao-whatif-direction { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; padding-inline: 24px; }
 @media (max-width: 600px) {  /* Phones: parameter name above its bars */
     .ao-whatif-row, .ao-whatif-axis { grid-template-columns: minmax(0, 1fr); gap: 4px; }

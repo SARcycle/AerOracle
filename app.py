@@ -366,10 +366,7 @@ WHATIF_LABEL_SPACE = '72px'  # Kept free on both sides of the bars for their lab
 def whatif_chart(sensitivities, pct):
     """Horizontal bars per parameter: −pct (pale) and +pct (solid), green = faster, red = slower."""
     rows = sorted(sensitivities, key=lambda s: -abs(s.plus_s))
-    limit_min = max(1, int(np.ceil(max(max(abs(s.minus_s), abs(s.plus_s)) for s in rows) * 1.3 / 60)))
-    tick_step = 1 if limit_min <= 3 else 2
-    limit_min = int(np.ceil(limit_min / tick_step) * tick_step)
-    limit = limit_min * 60
+    limit = max(60, max(max(abs(s.minus_s), abs(s.plus_s)) for s in rows) * 1.3)  # Longest bar: 1/1.3 of the half width
     # Position on the track: the center line ± half of the chart width minus the label space
     position = lambda fraction: f'calc(50% + (50% - {WHATIF_LABEL_SPACE}) * {fraction:.4f})'
 
@@ -382,15 +379,12 @@ def whatif_chart(sensitivities, pct):
                 html.Div(utilities.format_time_change(seconds), className='ao-bar-label',
                          style={side: f'calc({position(fraction)} + 6px)', 'top': '2px' if kind == 'minus' else '22px'})]
 
-    ticks = [html.Span(f"{'−' if m < 0 else '+' if m > 0 else ''}{abs(m)} min" if m else '0', style={'left': position(m / limit_min)})
-             for m in range(-limit_min, limit_min + 1, tick_step)]
     return html.Div([
         html.Div([html.Div(), html.Div([html.Span("← faster", className='faster'), html.Span("slower →", className='slower')],
                                        className='ao-whatif-direction')], className='ao-whatif-axis'),
         *[html.Div([html.Div([html.B(s.parameter), html.Span(f"{pct:g}% = {s.step}")], className='ao-whatif-name'),
                     html.Div(bar(s.minus_s, 'minus') + bar(s.plus_s, 'plus'), className='ao-whatif-bars')], className='ao-whatif-row')
           for s in rows],
-        html.Div([html.Div(), html.Div(ticks, className='ao-whatif-ticks')], className='ao-whatif-axis'),
         html.Div([html.Span([html.I(style={'opacity': .5}), f"−{pct:g}%"]), html.Span([html.I(), f"+{pct:g}%"]),
                   html.Span("Only this parameter changes; power and CdA for flat, uphill and downhill together")], className='ao-whatif-key'),
     ], className='ao-whatif')
@@ -576,7 +570,7 @@ def start_page():
             html.Div(html.Img(src=EXAMPLE_PROFILE, alt="Elevation profile of the sample route") if EXAMPLE_PROFILE else None, className='ao-hero-art'),
         ], className='ao-hero'),
         html.Div([
-            html.Div([html.H3("Wind along the route"), html.P("Forecast every 10 minutes of riding time, projected onto your direction of travel.")], className='ao-feature'),
+            html.Div([html.H3("Wind along the route"), html.P("Forecast every 10 minutes of riding time (less often on very long rides), projected onto your direction of travel.")], className='ao-feature'),
             html.Div([html.H3("Precise elevation"), html.P("swissALTI3D and LiDAR where available, Copernicus worldwide, tunnels and bridges flattened.")], className='ao-feature'),
             html.Div([html.H3("Ready for your head unit"), html.P("TCX, GPX and FIT courses with climbs and turns as cues.")], className='ao-feature'),
         ], className='ao-features'),
@@ -695,7 +689,8 @@ def serve_layout():
         ], className='ao-shell'),
         html.Footer(["AerOracle by SARcycle",
                      *([" · ", html.A("Source code", href=config.SOURCE_URL, target='_blank', rel='noopener')] if config.SOURCE_URL else []),
-                     f" · Developed for cycling nerds just like me · Backend {version_backend} · Frontend {version_frontend}{osm_info}"],
+                     " · Developed for cycling nerds just like me", html.Br(),
+                     f"Backend {version_backend} · Frontend {version_frontend}{osm_info}"],
                     className='ao-footer'),
         modal('about-modal', "About AerOracle", ABOUT),
         modal('sources-modal', "Data sources", DATA_SOURCES),
