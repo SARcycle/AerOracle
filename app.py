@@ -382,10 +382,10 @@ def whatif_chart(sensitivities, pct):
     return html.Div([
         html.Div([html.Div(), html.Div([html.Span("← faster", className='faster'), html.Span("slower →", className='slower')],
                                        className='ao-whatif-direction')], className='ao-whatif-axis'),
-        *[html.Div([html.Div([html.B(s.parameter), html.Span(f"{pct:g}% = {s.step}")], className='ao-whatif-name'),
+        *[html.Div([html.Div([html.B(s.parameter), html.Span(f"±{pct:g}% = ±{s.step}")], className='ao-whatif-name'),
                     html.Div(bar(s.minus_s, 'minus') + bar(s.plus_s, 'plus'), className='ao-whatif-bars')], className='ao-whatif-row')
           for s in rows],
-        html.Div([html.Span([html.I(style={'opacity': .5}), f"−{pct:g}%"]), html.Span([html.I(), f"+{pct:g}%"]),
+        html.Div([html.Span([html.I(style={'opacity': .5}), f"{pct:g}% lower"]), html.Span([html.I(), f"{pct:g}% higher"]),
                   html.Span("Power and CdA change on flats, climbs and descents alike")], className='ao-whatif-key'),
     ], className='ao-whatif')
 
@@ -542,7 +542,7 @@ def results_layout(key, args, data, settings, theme='light'):
         fields,
         *([html.Div(pills, className='ao-pills')] if pills else []),
         route_card,
-        html.Div([card(f"What if {args.whatif_pct:g}% changes?", whatif_chart(speedcalculation.sensitivities(args, track), args.whatif_pct), hint="Only one parameter changes at a time"),
+        html.Div([card(f"What if a value changes by ±{args.whatif_pct:g}%?", whatif_chart(speedcalculation.sensitivities(args, track), args.whatif_pct), hint="Only one parameter changes at a time"),
                   card("Climb" if len(climbs) == 1 else "Climbs", climbs_table(args, climbs), hint=f"{len(climbs)} detected" if args.climbs else None)],
                  className='ao-twocol'),
         *([card("Conditions", conditions(args, data),
