@@ -24,3 +24,4 @@ outputs/
 
 # Private notes
 docs/feature-ideas.md
+tools/package_data.py

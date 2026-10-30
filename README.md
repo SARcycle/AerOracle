@@ -172,6 +172,17 @@ Automatic tiles are downloaded the first time a route needs them and kept for la
   once processed, it needs little temporary space; run it monthly, for example from cron.
   `tools/osm/osm_manager.sh` shows the status of the OSM data and restores archived versions.
 
+### Prepared data for download
+
+The OpenStreetMap tunnels, bridges and country outlines (ODbL), the swissALTI3D mosaic of Switzerland
+(swisstopo open data) and Sonny's LiDAR DTMs (CC BY 4.0) are available as one ready-made package (~5 GB):
+[doi:10.5281/zenodo.23802043](https://doi.org/10.5281/zenodo.23802043)
+
+Unzip it into your `data_dir` (e.g. `/data`): the paths inside start with `GeoData/`. This saves the hours of the
+first OSM update; later updates with `tools/osm/osm_tunnels_world.py` build on it. The package's `README.txt`
+lists sources, processing and the required attributions. The optional WGM2012 gravity grid is available from
+its provider (link below).
+
 ## Data sources
 
 The data sets are not part of this repository and have their own licences. These credits are also shown in the

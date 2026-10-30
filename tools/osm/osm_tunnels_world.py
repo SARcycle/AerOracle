@@ -78,6 +78,10 @@ def atomic_directory_swap(staging_dir, production_symlink):
     new_version_dir = os.path.join(parent_dir, f"{base_name}_v{timestamp}")
     os.rename(staging_dir, new_version_dir)
 
+    # A plain folder in place of the symlink (e.g. unpacked from the published data) becomes a version of its own
+    if os.path.isdir(production_symlink) and not os.path.islink(production_symlink):
+        os.rename(production_symlink, f"{production_symlink}_v{time.strftime('%Y%m%d-%H%M%S', time.localtime(os.path.getmtime(production_symlink)))}")
+
     # Relative symlink, created under a temporary name
     temp_symlink = f"{production_symlink}_tmp_{timestamp}"
     os.symlink(os.path.basename(new_version_dir), temp_symlink)
