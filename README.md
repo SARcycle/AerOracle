@@ -15,9 +15,10 @@ It runs as a web app or on the command line, and writes the course back as TCX, 
   (Crr, or Prr from bicyclerollingresistance.com), gravity, air density and wind. Power and CdA can differ
   between flat, uphill and downhill sections (gradient threshold `--gradient`, default 5%).
 - **Corners and momentum:** speed limit in every corner from its radius and the rider's cornering level
-  (lateral acceleration, capped by tyre grip), braking before corners and accelerating out of them with the
-  rider's power, including the kinetic energy of rider, bike and rotating wheels (Martin et al. 1998, Eq. 12),
-  so speed is carried into short climbs. No pedalling above about 30° lean or 65 km/h (cadence limit).
+  (lateral acceleration, capped by tyre grip), braking before corners (sharing the grip with cornering: friction
+  circle) and accelerating out of them with the rider's power, including the kinetic energy of rider, bike and
+  rotating wheels (Martin et al. 1998, Eq. 12), so speed is carried into short climbs. No pedalling above about
+  30° lean or 65 km/h (cadence limit).
   With the weather forecast, roads count as wet where at least 0.2 mm of rain fell in the preceding hour:
   tyre grip 0.6 g instead of 0.9 g, and 75% of the rider's cornering and braking level.
 - **Elevation** from the most detailed model covering each point: swissALTI3D, Sonny's LiDAR DTMs, Copernicus

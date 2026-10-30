@@ -189,20 +189,25 @@ def cornered_speeds(parameters, track, steady, with_weather):
     braking before corners (backward pass) and accelerating after them with the rider's power (forward pass, which also
     carries momentum into short climbs). No pedalling above the pedal strike lean angle or the cadence limit.
     With weather, roads are wet where the precipitation reaches WET_ROAD_MM_PER_H: less grip and more caution.
+    Braking and cornering share the tyre grip (friction circle): where the bike corners hard, less braking is left.
     """
     level_lateral_g, level_braking_g = CORNERING[parameters.cornering]
     gravity = track['gravity_ms2']
     radius, step = track['curve_radius_m'], track['delta_distance_m']
     lateral_g = np.full(len(radius), min(level_lateral_g, GRIP_DRY_G))
     braking_g = np.full(len(radius), level_braking_g)
+    grip_g = np.full(len(radius), GRIP_DRY_G)
     if with_weather and track.has('precipitation_mm_s'):
         wet = np.nan_to_num(track['precipitation_mm_s']) * 3600 >= WET_ROAD_MM_PER_H
         lateral_g[wet] = min(level_lateral_g * WET_CAUTION, WET_GRIP_G)
         braking_g[wet] = min(level_braking_g * WET_CAUTION, WET_GRIP_G)
+        grip_g[wet] = WET_GRIP_G
     limit = np.minimum(np.sqrt(lateral_g * gravity * radius), MAX_SPEED_MS).tolist()
-    braking = (braking_g * gravity).tolist()
+    braking, grip, radius_list = (braking_g * gravity).tolist(), (grip_g * gravity).tolist(), radius.tolist()
     for i in range(len(limit) - 2, -1, -1):  # Braking: arrive at most this fast to make the next limit
-        limit[i] = min(limit[i], (limit[i + 1] ** 2 + 2 * braking[i + 1] * step[i + 1]) ** 0.5)
+        lateral = limit[i + 1] ** 2 / radius_list[i + 1]  # Lateral acceleration at the next point [m/s²]
+        available = min(braking[i + 1], max(grip[i + 1] ** 2 - lateral ** 2, 0.0) ** 0.5)  # Friction circle
+        limit[i] = min(limit[i], (limit[i + 1] ** 2 + 2 * available * step[i + 1]) ** 0.5)
 
     drag, resistance, headwind = resistance_terms(parameters, track, with_weather)
     power = per_gradient(track['gradient'], parameters.power, parameters.gradient_threshold) * DRIVETRAIN_EFFICIENCY
