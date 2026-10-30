@@ -34,7 +34,8 @@ import utilities
 import weather
 
 APP_DIR = Path(__file__).parent
-WORK_DIR = Path(tempfile.gettempdir()) / 'aeroracle'  # One sub folder per analysis, holding the processed TCX/GPX/FIT
+WORK_DIR = Path(tempfile.gettempdir()) / 'aeroracle-results'  # One sub folder per analysis, holding the processed TCX/GPX/FIT
+                                                             # (not config.TEMP_DIR: everything in here is deleted after WORK_RETENTION_S)
 WORK_RETENTION_S = 30 * 60   # Processed files are deleted after 30 min (legal notice: within 60 min)
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 ANALYSIS_SLOTS = threading.BoundedSemaphore(2)  # Concurrent analyses: CPU-bound, one per core (2 cores)
