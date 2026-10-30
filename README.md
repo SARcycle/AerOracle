@@ -109,7 +109,7 @@ uv run python main.py -i route.tcx -t 2026-07-14T09:00 -k
 | `-p`, `--power` | Power in W: flat, uphill, downhill | 210, 231, 0 |
 | `-m`, `--powerfactor` | Uphill power = flat power × factor, if only one power is given | 1.1 |
 | `-w`, `--weight` | System weight (rider and bike) in kg | 80 |
-| `-c`, `--cda` | Drag area in m²: flat, uphill, downhill | 0.29, 0.33, 0.25 |
+| `-c`, `--cda` | Drag area in m²: flat, uphill, downhill (see note below) | 0.35, 0.40, 0.29 |
 | `-b`, `--tt` | Time trial bike (CdA 0.23) | |
 | `-r`, `--crr` | Rolling resistance coefficient | 0.0035 |
 | `-g`, `--gradient` | Gradient threshold for uphill/downhill power and CdA | 0.05 |
@@ -119,6 +119,10 @@ uv run python main.py -i route.tcx -t 2026-07-14T09:00 -k
 | `-s`, `--whatif` | Change of each parameter in the what-if table, in % | `whatif_pct` (1) |
 | `-q`, `--quiet` | Less output | |
 | `--check-data` | Report available data, credentials and programs | |
+
+The model computes steady riding; it does not simulate junctions, traffic lights or traffic. With a CdA from a
+wind tunnel or field test, the times are for unhindered riding: rides with junctions and traffic take longer
+(about 5% on the rides the model was checked against).
 
 The course is written as TCX next to the input (the input file is replaced), plus GPX and FIT, and with
 `-t` a wind chart (`<route>_meteo.jpeg`). With `publish_dir` and `publish_url` set in `config.toml`, these

@@ -131,7 +131,7 @@ class Parameters:
                 if self.cda is not None and len(self.cda) == 1:
                     self.cda = self.cda*3
                 else:
-                    self.cda = [0.29, 0.33, 0.25]
+                    self.cda = [0.35, 0.40, 0.29]
             elif len(self.cda) == 3:
                 pass
         elif self.tt:

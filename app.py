@@ -57,10 +57,10 @@ CORNERING_HINTS = {  # Hairpin speeds: sqrt(a_lat * g * 10 m); lean angle: arcta
     'racer': "Brakes hard and late, leans close to grip limit (39°): rides a tight hairpin (10 m radius) at ~32 km/h. On wet roads (rain in forecast): 0.60 g (wet grip limit).",
 }
 
-DEFAULTS = dict(power=(205, 225, 0), cda=(0.29, 0.33, 0.25), weight=82.0, crr=0.0035)
+DEFAULTS = dict(power=(205, 225, 0), cda=(0.35, 0.40, 0.29), weight=82.0, crr=0.0035)
 # Bike presets, not shown yet (the chips are hidden). Gravel values are placeholders to be confirmed.
 RIDER_PRESETS = {
-    'Road': dict(cda=(0.29, 0.33, 0.25), crr=0.0035),
+    'Road': dict(cda=(0.35, 0.40, 0.29), crr=0.0035),
     'Triathlon/TT': dict(cda=(0.23, 0.23, 0.23), crr=0.0035),
     'Gravel': dict(cda=(0.40, 0.42, 0.32), crr=0.0055),
 }
