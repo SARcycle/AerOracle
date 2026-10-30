@@ -46,7 +46,7 @@ EXAMPLE_ROUTE = APP_DIR / 'examples' / 'tdf2022_stage12.json'
 EXAMPLE_WEATHER = APP_DIR / 'examples' / 'tdf2022_stage12_weather.json'
 EXAMPLE_START = datetime(2022, 7, 14, 12, 15)
 
-DEFAULTS = dict(power=(205, 225, 0), cda=(0.35, 0.40, 0.29), weight=80.0, crr=0.00321)
+DEFAULTS = dict(power=(205, 225, 0), cda=(0.35, 0.40, 0.29), weight=82.0, crr=0.00321)
 # Bike presets, not shown yet (the chips are hidden). Gravel values are placeholders to be confirmed.
 RIDER_PRESETS = {
     'Road': dict(cda=(0.35, 0.40, 0.29), crr=0.00321),

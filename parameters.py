@@ -44,7 +44,7 @@ class Parameters:
             description="Program for cycling aerodynamics calculations and ride time estimations")
         parse.add_argument('-i', '--input', type=str, help='Input file', default=None)
         parse.add_argument('-p', '--power', nargs='+', type=int, help='Average Power [W] [Flat, Uphill, Downhill]; Default: [210, 231, 0]', default=None)
-        parse.add_argument('-w', '--weight', type=float, help='System weight (rider + bike) [kg]; Default: 80',
+        parse.add_argument('-w', '--weight', type=float, help='System weight (rider + bike) [kg]; Default: 82',
                            default=None)
         parse.add_argument('-t', '--time', type=str, help='Start time of the ride, local time at the route start [yyyymmddHHMMSS]', default=None)
         parse.add_argument('-q', '--quiet', action='store_true', help='Suppress output')
@@ -105,8 +105,8 @@ class Parameters:
         elif len(self.power) == 2:
             self.power.append(.1)  # Making sure that downhill power is not set to zero
         if self.weight is None:
-            self.weight = 80
-            print('- No weight provided. Defaulting to 80 kg.')
+            self.weight = 82
+            print('- No weight provided. Defaulting to 82 kg.')
         if self.time is None:
             self.time = False
         else:
