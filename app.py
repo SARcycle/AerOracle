@@ -386,7 +386,7 @@ def whatif_chart(sensitivities, pct):
                     html.Div(bar(s.minus_s, 'minus') + bar(s.plus_s, 'plus'), className='ao-whatif-bars')], className='ao-whatif-row')
           for s in rows],
         html.Div([html.Span([html.I(style={'opacity': .5}), f"−{pct:g}%"]), html.Span([html.I(), f"+{pct:g}%"]),
-                  html.Span("Only this parameter changes; power and CdA for flat, uphill and downhill together")], className='ao-whatif-key'),
+                  html.Span("Power and CdA change on flats, climbs and descents alike")], className='ao-whatif-key'),
     ], className='ao-whatif')
 
 
