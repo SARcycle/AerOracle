@@ -649,12 +649,51 @@ def sizeof_fmt(num, suffix="B"):
 
 
 GDAL_CACHE_MB = 64
+STRIP_ROW_GAP = 1  # Files stored in strips: rows with points at most this far apart are read together ...
+STRIP_RUN_ROWS = 256  # ... in runs of at most this many rows (bounds the memory of one read)
+
+def read_pixel_blocks(src, x, y):
+    """Nearest pixel values at x, y (raster CRS), reading every needed part of the file once.
+
+    Tiled files (e.g. COG) are read tile by tile. Files stored in strips (one row per block) are read row run by
+    row run, so no row without points is decompressed. Same values as rasterio's sample(): points outside the
+    raster get its nodata value (0 without one).
+    """
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+    values = np.full(len(x), src.nodata if src.nodata is not None else 0, dtype=float)
+    if len(x) == 0:
+        return values
+    row, col = (np.asarray(v, dtype=np.int64) for v in rasterio.transform.rowcol(src.transform, x, y))
+    inside = (row >= 0) & (row < src.height) & (col >= 0) & (col < src.width)
+    block_rows, block_cols = src.block_shapes[0]
+    if block_rows < 16:  # Strips: runs of rows with points, gaps of up to STRIP_ROW_GAP rows bridged
+        rows = np.unique(row[inside])
+        new_run = np.insert(np.diff(rows) > STRIP_ROW_GAP, 0, True)
+        run_start = np.maximum.accumulate(np.where(new_run, rows, 0))
+        new_run |= np.insert(np.diff((rows - run_start) // STRIP_RUN_ROWS) != 0, 0, False)  # Split long runs
+        run_of_row = np.cumsum(new_run)
+        group = np.full(len(row), -1)
+        group[inside] = run_of_row[np.searchsorted(rows, row[inside])]
+    else:  # Tiles
+        group = np.where(inside, (row // block_rows) * (src.width // block_cols + 1) + col // block_cols, -1)
+    order = np.argsort(group, kind='stable')
+    bounds = np.flatnonzero(np.diff(group[order])) + 1
+    for idx in np.split(order, bounds):
+        if group[idx[0]] < 0:
+            continue
+        r0, c0 = row[idx].min(), col[idx].min()
+        window = rasterio.windows.Window(c0, r0, col[idx].max() - c0 + 1, row[idx].max() - r0 + 1)
+        values[idx] = src.read(1, window=window)[row[idx] - r0, col[idx] - c0]
+    return values
 
 def getpixelvalues(lat, lon, tilename):
     if os.path.exists(tilename):
         # GDAL caches raster blocks up to 5% of the RAM by default - limit it to keep the memory footprint small
         with rasterio.Env(GDAL_CACHEMAX=GDAL_CACHE_MB), rasterio.open(tilename) as src:
-            pixel_values = np.fromiter((x[0] for x in src.sample(zip(lon, lat))), dtype=float, count=len(lat))
+            try:
+                pixel_values = read_pixel_blocks(src, lon, lat)
+            except Exception:  # Unusual raster layout: point by point
+                pixel_values = np.fromiter((x[0] for x in src.sample(zip(lon, lat))), dtype=float, count=len(lat))
     else:
         pixel_values = np.zeros(len(lat))
         if tilename.find('swisstopo') != -1: # Since SA3D values are 10x

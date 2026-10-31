@@ -149,7 +149,7 @@ corrections.
 ```
 GeoData/
 ├── DEM/
-│   ├── swisstopo/      swissALTI3D_5m_elevation_r2023_10xuint16_compressed_DEFLATE.tif   manual
+│   ├── swisstopo/      swissALTI3D_5m_elevation_r2023_10xuint16_COG.tif (see below)       manual
 │   │                   swissBOUNDARIES3D_1_3_TLM_LANDESGEBIET_Simplified.shp (+ .shx .dbf .prj)
 │   ├── SonnyDEM/       N46E008.tif … (1°×1° tiles), SonnyDEM_Tiles_Outline_Singlepart.shp   manual
 │   ├── CopernicusDEM/  Copernicus_DSM_COG_10_N46_00_E008_00_DEM_10xInt32.tif …          automatic
@@ -170,6 +170,9 @@ Automatic tiles are downloaded the first time a route needs them and kept for la
 
 - **swissALTI3D** (Switzerland): a mosaic of the [swissALTI3D](https://www.swisstopo.admin.ch/en/height-model-swissalti3d)
   tiles at 5 m resolution, in LV95 (EPSG:2056), elevation × 10 stored as UInt16, DEFLATE compressed (about 1.4 GB).
+  Stored as a tiled GeoTIFF (`_COG.tif`) it is read many times faster than in strips (`_compressed_DEFLATE.tif`,
+  still used if the COG is missing):
+  `gdal_translate -of COG -co BLOCKSIZE=512 -co COMPRESS=DEFLATE -co PREDICTOR=2 -co OVERVIEWS=NONE -co BIGTIFF=IF_SAFER <strips>.tif <name>_COG.tif`
   The Swiss border comes from [swissBOUNDARIES3D](https://www.swisstopo.admin.ch/en/landscape-model-swissboundaries3d)
   (national territory, simplified).
 - **Sonny's LiDAR DTMs** (parts of Europe): the 1°×1° GeoTIFF tiles from [sonny.4lima.de](https://sonny.4lima.de/),

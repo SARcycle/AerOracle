@@ -469,7 +469,10 @@ def swissAlti3DElevation(parameters, work):
         parameters.dem.append('swisstopo (swissALTI3D)')
         print('\t- Adding swissALTI3D DEM Data')
 
-        tilename = f'{parameters.folder_prefix}/GeoData/DEM/swisstopo/swissALTI3D_5m_elevation_r2023_10xuint16_compressed_DEFLATE.tif'  # Faster
+        folder = f'{parameters.folder_prefix}/GeoData/DEM/swisstopo'
+        tilename = f'{folder}/swissALTI3D_5m_elevation_r2023_10xuint16_COG.tif'  # Tiled: read much faster
+        if not os.path.exists(tilename):
+            tilename = f'{folder}/swissALTI3D_5m_elevation_r2023_10xuint16_compressed_DEFLATE.tif'
         work.fill(mask, utilities.getpixelvalues(points_y[mask], points_x[mask], tilename) / 10, SWISSALTI3D)
 
 

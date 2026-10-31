@@ -22,7 +22,7 @@ class DataSet:
 
 DATA_SETS = (
     DataSet('swissALTI3D (Switzerland, 5 m)',
-            ('DEM/swisstopo/swissALTI3D_5m_elevation_r2023_10xuint16_compressed_DEFLATE.tif',
+            ('DEM/swisstopo/swissALTI3D_5m_elevation_r2023_10xuint16_*.tif',  # _COG.tif or _compressed_DEFLATE.tif
              'DEM/swisstopo/swissBOUNDARIES3D_1_3_TLM_LANDESGEBIET_Simplified.shp'),
             'manual', 'other elevation models used in Switzerland'),
     DataSet('Sonny LiDAR DTMs (parts of Europe)',
