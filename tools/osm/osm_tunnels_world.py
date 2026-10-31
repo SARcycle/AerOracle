@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import pwd
+import shutil
 import fcntl
 from pathlib import Path
 import json
@@ -68,6 +69,25 @@ def release_update_lock(lock_fd):
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         lock_fd.close()
 
+KEEP_ARCHIVES = 3  # Zip archives per data set in GeoData/OSM/archive/<name>/
+KEEP_VERSIONS = 2  # Versioned folders per data set (<name>_v<timestamp>)
+
+def archive_production(production, archive_dir, timestamp, target_user):
+    """Zip the production *_MultiPoly.* files into archive_dir/<timestamp>.zip; keep the newest KEEP_ARCHIVES."""
+    actual = os.path.realpath(production)
+    files = sorted(glob.glob(os.path.join(actual, '*_MultiPoly.*')))
+    os.makedirs(archive_dir, exist_ok=True)
+    legacy = os.path.join(actual, 'old')  # Former outline archives inside the outlines folder
+    for old_zip in sorted(glob.glob(os.path.join(legacy, '*.zip'))):
+        shutil.move(old_zip, os.path.join(archive_dir, os.path.basename(old_zip)))
+    if files:
+        with ZipFile(os.path.join(archive_dir, f'{timestamp}.zip'), 'w') as archive:
+            for filename in files:
+                archive.write(filename, os.path.basename(filename))
+    for old_zip in sorted(glob.glob(os.path.join(archive_dir, '*.zip')))[:-KEEP_ARCHIVES]:  # Names sort by time
+        os.remove(old_zip)
+    fix_ownership(archive_dir, target_user)
+
 def atomic_directory_swap(staging_dir, production_symlink):
     """Atomically swap staging directory to production using symlinks"""
     timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -129,9 +149,12 @@ try:
                 f.writelines([lines[0]] + [line for line in lines[1:] if line.split(';')[1] in regions])
             print(f'Only regions: {", ".join(regions)}')
 
-        osm.outlines_from_kml(csv_path)
-
         # Use staging directories that don't interfere with production
+        staging_outlines = os.path.join(base_path, 'outlines_staging')
+        production_outlines = os.path.join(base_path, 'outlines')
+        print('Building outlines (staging)...')
+        osm.outlines_from_kml(csv_path, staging_outlines)
+
         savepath = os.path.join(base_path, 'countries')
         staging_tunnels = os.path.join(savepath, 'tunnels_staging')
         staging_bridges = os.path.join(savepath, 'bridges_staging')
@@ -211,7 +234,9 @@ try:
                     os.rename(file, file.replace(fav, f'{fav_counter}_{fav}'))
 
         # Never swap in (nearly) empty data: compare with the current production version
-        for staging, production in ((staging_tunnels, production_tunnels), (staging_bridges, production_bridges)):
+        data_sets = (('outlines', staging_outlines, production_outlines),
+                     ('tunnels', staging_tunnels, production_tunnels), ('bridges', staging_bridges, production_bridges))
+        for _, staging, production in data_sets:
             new_count = len(glob.glob(os.path.join(staging, '*_MultiPoly.shp')))
             old_count = len(glob.glob(os.path.join(production, '*_MultiPoly.shp')))
             if new_count == 0 or new_count < 0.8 * old_count:
@@ -227,65 +252,26 @@ try:
                        'updated': time.strftime('%Y-%m-%dT%H:%M:%S')}, f, indent=4)
         fix_ownership(osm_date_file, target_user)
 
-        # Archive the current production files
+        # Archive the current production files (GeoData/OSM/archive/<name>/, read by the app's restore)
         print('Archiving old production files...')
         timestamp = time.strftime("%Y%m%d-%H%M%S")
-        
-        # Archive tunnels if production exists
-        if os.path.exists(production_tunnels) or os.path.islink(production_tunnels):
-            archive_dir = os.path.join(base_path, 'archive', 'tunnels')
-            os.makedirs(archive_dir, exist_ok=True)
-            
-            # Resolve symlink to actual directory
-            actual_tunnels = os.path.realpath(production_tunnels) if os.path.islink(production_tunnels) else production_tunnels
-            
-            if os.path.exists(actual_tunnels):
-                with ZipFile(os.path.join(archive_dir, f'{timestamp}.zip'), 'w') as zipObj:
-                    for filename in glob.glob(os.path.join(actual_tunnels, '*_MultiPoly.*')):
-                        zipObj.write(filename, os.path.basename(filename))
-                
-                # Clean up old archives (keep last 3)
-                os.system(f'ls {archive_dir}/*.zip -1t | tail -n +4 | xargs rm -f')
-        
-        # Archive bridges if production exists
-        if os.path.exists(production_bridges) or os.path.islink(production_bridges):
-            archive_dir = os.path.join(base_path, 'archive', 'bridges')
-            os.makedirs(archive_dir, exist_ok=True)
-            
-            # Resolve symlink to actual directory
-            actual_bridges = os.path.realpath(production_bridges) if os.path.islink(production_bridges) else production_bridges
-            
-            if os.path.exists(actual_bridges):
-                with ZipFile(os.path.join(archive_dir, f'{timestamp}.zip'), 'w') as zipObj:
-                    for filename in glob.glob(os.path.join(actual_bridges, '*_MultiPoly.*')):
-                        zipObj.write(filename, os.path.basename(filename))
-                
-                # Clean up old archives (keep last 3)
-                os.system(f'ls {archive_dir}/*.zip -1t | tail -n +4 | xargs rm -f')
+        for name, _, production in data_sets:
+            archive_production(production, os.path.join(base_path, 'archive', name), timestamp, target_user)
 
         # ATOMIC SWAP: Point production symlinks to new staging directories
         print('Swapping to new version (atomic operation)...')
-        
-        # For tunnels
-        new_tunnels_version = atomic_directory_swap(staging_tunnels, production_tunnels)
-        print(f'Tunnels now pointing to: {new_tunnels_version}')
-        fix_ownership(new_tunnels_version, target_user)
-        fix_ownership(production_tunnels, target_user)
-        
-        # For bridges
-        new_bridges_version = atomic_directory_swap(staging_bridges, production_bridges)
-        print(f'Bridges now pointing to: {new_bridges_version}')
-        fix_ownership(new_bridges_version, target_user)
-        fix_ownership(production_bridges, target_user)
-        
+        for name, staging, production in data_sets:
+            new_version = atomic_directory_swap(staging, production)
+            print(f'{name.capitalize()} now pointing to: {new_version}')
+            fix_ownership(new_version, target_user)
+            fix_ownership(production, target_user)
+
         # Clean up old versioned directories (keep last 2 versions)
         print('Cleaning up old versions...')
-        for pattern in ['tunnels_v*', 'bridges_v*']:
-            old_versions = sorted(glob.glob(os.path.join(savepath, pattern)))
-            if len(old_versions) > 2:
-                for old_dir in old_versions[:-2]:
-                    print(f'Removing old version: {old_dir}')
-                    os.system(f'rm -rf {old_dir}')
+        for name, _, production in data_sets:
+            for old_dir in sorted(glob.glob(f'{production}_v*'))[:-KEEP_VERSIONS]:
+                print(f'Removing old version: {old_dir}')
+                shutil.rmtree(old_dir)
 
         os.system('rm -rf {}'.format(tmp_folder))
         os.makedirs(config.INPUT_DIR, exist_ok=True)

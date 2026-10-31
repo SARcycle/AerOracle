@@ -304,28 +304,15 @@ def merge_shapefiles(input_folder):
     #        os.remove(file)
 
 
-def outlines_from_kml(csv_path):
-    from zipfile import ZipFile
-    import time
+def outlines_from_kml(csv_path, output_folder):
+    """Build the region outlines (one *_MultiPoly.shp per Geofabrik region) into output_folder, a fresh staging folder.
 
-    tmp_folder = os.path.join(TMP_DIR, 'Tunnels')
-    save_folder = config.DATA_DIR
-
-    output_folder = f"{save_folder}/GeoData/OSM/outlines"
-
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-
-    print('Archiving old files (Outlines)')
-    if not os.path.exists(os.path.join(output_folder, 'old')):
-        os.makedirs(os.path.join(output_folder, 'old'))
-    with ZipFile(os.path.join(output_folder, 'old', f'{time.strftime("%Y%m%d-%H%M%S")}.zip'), 'w') as zipObj2:
-        for filename in sorted(glob.glob(os.path.join(output_folder, '*_MultiPoly.*'))):
-            zipObj2.write(filename)
-    file_list = sorted(glob.glob(f'{os.path.join(output_folder, "*.*")}'))
-    for file in file_list:
-        os.remove(file)
-    os.system(f'ls {os.path.join(output_folder, "old", "*.zip")} -1t | tail -n +4 | xargs rm -f')
+    The production outlines stay untouched; osm_tunnels_world.py swaps the staging folder in at the end of the update.
+    """
+    import shutil
+    if os.path.lexists(output_folder):  # Leftovers of an aborted update
+        shutil.rmtree(output_folder)
+    os.makedirs(output_folder)
 
     with open(csv_path, 'r') as f:
         lines = f.readlines()
