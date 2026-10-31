@@ -1,7 +1,7 @@
 # Copy to config.toml and adapt. Every value can also be set by an environment variable
 # (AERORACLE_DATA_DIR, AERORACLE_TEMP_DIR, AERORACLE_INPUT_DIR, AERORACLE_PUBLISH_DIR, AERORACLE_PUBLISH_URL,
 # AERORACLE_SOURCE_URL, AERORACLE_WHATIF_PCT, AERORACLE_WIND_SHEAR_EXPONENT, AERORACLE_MAX_FORECAST_LOCATIONS,
-# AERORACLE_CORNERING, AERORACLE_MAX_PEDALLING_SPEED_KMH).
+# AERORACLE_CORNERING, AERORACLE_MAX_PEDALLING_SPEED_KMH, AERORACLE_MAX_SPEED_KMH).
 
 # Folder that contains GeoData/ (DEM/, OSM/, Gravimetry/)
 data_dir = "/data"
@@ -42,3 +42,6 @@ data_dir = "/data"
 
 # Speed above which riders stop pedalling (cadence limit with the largest gear, e.g. 53-11 at about 110 rpm) (default 65)
 # max_pedalling_speed_kmh = 65
+
+# Top speed, speeds above are clipped to this value
+# max_speed_kmh = 80

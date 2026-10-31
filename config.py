@@ -13,6 +13,7 @@ Read from config.toml next to this file (see config.example.toml), each value ov
     max_forecast_locations  AERORACLE_MAX_FORECAST_LOCATIONS  Weather forecast locations per ride at most (default 50)
     cornering    AERORACLE_CORNERING    Default rider level in corners: cautious, average, confident or racer (default average)
     max_pedalling_speed_kmh  AERORACLE_MAX_PEDALLING_SPEED_KMH  Speed above which riders stop pedalling (default 65)
+    max_speed_kmh  AERORACLE_MAX_SPEED_KMH  Top speed, e.g. on descents (default 80)
 """
 import os
 import tempfile
@@ -33,6 +34,7 @@ _DEFAULTS = {
     'max_forecast_locations': 50,
     'cornering': 'average',
     'max_pedalling_speed_kmh': 65.0,
+    'max_speed_kmh': 80.0,
 }
 
 
@@ -60,3 +62,4 @@ WIND_SHEAR_EXPONENT: float = abs(float(_settings['wind_shear_exponent']))
 MAX_FORECAST_LOCATIONS: int = max(2, int(_settings['max_forecast_locations']))
 CORNERING: str = _settings['cornering']
 MAX_PEDALLING_SPEED_KMH: float = float(_settings['max_pedalling_speed_kmh'])
+MAX_SPEED_KMH: float = float(_settings['max_speed_kmh'])

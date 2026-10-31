@@ -11,7 +11,7 @@ import weather
 from parameters import PerGradient, PowerSummary
 
 RHO0 = 1.225  # Air density at sea level and 15 °C [kg/m³]
-MAX_SPEED_MS = 80 / 3.6
+MAX_SPEED_MS = config.MAX_SPEED_KMH / 3.6  # Top speed (config max_speed_kmh)
 DRIVETRAIN_EFFICIENCY = 0.98
 
 # Cornering: rider level -> (accepted lateral acceleration, braking deceleration) [g]
