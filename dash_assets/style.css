@@ -84,6 +84,9 @@ h1, h2, h3, h4 { font-family: var(--ao-font-display); font-weight: 600; letter-s
 .ao-field { display: grid; gap: 3px; min-width: 0; }
 .ao-field label, .ao-field .form-label { font-size: 12.5px; color: var(--ao-ink-3); margin: 0; }
 .ao-rail .form-control, .ao-rail .form-select { background: var(--ao-sunken); border-color: var(--ao-line); font-family: var(--ao-font-data); font-size: 14px; color: var(--ao-ink); }
+/* Number fields accept any precision (step 'any'): spinner arrows, stepping by 1, would be of no use */
+.ao-rail input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+.ao-rail input[type=number]::-webkit-inner-spin-button, .ao-rail input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .ao-unit-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .ao-rr { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: center; }
 .ao-link { background: none; border: 0; padding: 0; color: var(--ao-accent); font-size: 14px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; justify-self: start; }

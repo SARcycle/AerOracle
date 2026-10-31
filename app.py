@@ -610,8 +610,9 @@ def field(label, component, label_for=None):
     return html.Div([html.Label(label, htmlFor=label_for), component], className='ao-field')
 
 
-def number(id, value, step, min=0, max=None):
-    return dbc.Input(id=id, type='number', value=value, step=step, min=min, max=max, size='sm')
+def number(id, value, min=0, max=None):
+    """Number field accepting any precision (step 'any'); arrows are hidden in style.css."""
+    return dbc.Input(id=id, type='number', value=value, step='any', min=min, max=max, size='sm')
 
 
 def segmented(id, options, value):
@@ -646,17 +647,17 @@ def rail():
             # Bike presets: kept, but hidden for now
             html.Div(segmented('rider-preset', list(RIDER_PRESETS), 'Road'), hidden=True),
             html.Div([html.Div([html.Span("Power", className='ao-label'), html.Span("W", className='ao-hint')], className='ao-unit-row'),
-                      html.Div([field("Flat", number('power-flat', DEFAULTS['power'][0], 'any', max=3000), 'power-flat'),
-                                field("Uphill", number('power-up', DEFAULTS['power'][1], 'any', max=3000), 'power-up'),
-                                field("Downhill", number('power-down', DEFAULTS['power'][2], 'any', max=3000), 'power-down')], className='ao-fields')]),
+                      html.Div([field("Flat", number('power-flat', DEFAULTS['power'][0], max=3000), 'power-flat'),
+                                field("Uphill", number('power-up', DEFAULTS['power'][1], max=3000), 'power-up'),
+                                field("Downhill", number('power-down', DEFAULTS['power'][2], max=3000), 'power-down')], className='ao-fields')]),
             html.Div([html.Div([html.Span("CdA", className='ao-label'), html.Span("m²", className='ao-hint')], className='ao-unit-row'),
-                      html.Div([field("Flat", number('cda-flat', DEFAULTS['cda'][0], 0.005, max=1), 'cda-flat'),
-                                field("Uphill", number('cda-up', DEFAULTS['cda'][1], 0.005, max=1), 'cda-up'),
-                                field("Downhill", number('cda-down', DEFAULTS['cda'][2], 0.005, max=1), 'cda-down')], className='ao-fields')]),
-            field("System weight, kg (bike, accessories and rider)", number('weight', DEFAULTS['weight'], 0.1, max=200), 'weight'),
+                      html.Div([field("Flat", number('cda-flat', DEFAULTS['cda'][0], max=1), 'cda-flat'),
+                                field("Uphill", number('cda-up', DEFAULTS['cda'][1], max=1), 'cda-up'),
+                                field("Downhill", number('cda-down', DEFAULTS['cda'][2], max=1), 'cda-down')], className='ao-fields')]),
+            field("System weight, kg (bike, accessories and rider)", number('weight', DEFAULTS['weight'], max=200), 'weight'),
             html.Div([
                 html.Label("Rolling resistance coefficient (Crr)", id='rr-label', htmlFor='rr-value'),
-                html.Div([segmented('rr-type', ["Crr", "Prr"], "Crr"), number('rr-value', DEFAULTS['crr'], 0.0001)], className='ao-rr'),
+                html.Div([segmented('rr-type', ["Crr", "Prr"], "Crr"), number('rr-value', DEFAULTS['crr'])], className='ao-rr'),
                 html.Span(rolling_resistance_hint("Crr"), id='rr-hint', className='ao-hint'),
             ], className='ao-field'),
             html.Div([
@@ -788,14 +789,14 @@ def apply_rider_preset(preset, rr_type):
     return *values['cda'], round(values['crr'] * PRR_PER_CRR, 1) if rr_type == "Prr" else values['crr']
 
 
-@app.callback(Output('rr-value', 'value'), Output('rr-value', 'step'), Output('rr-label', 'children'), Output('rr-hint', 'children'),
+@app.callback(Output('rr-value', 'value'), Output('rr-label', 'children'), Output('rr-hint', 'children'),
               Input('rr-type', 'value'), State('rr-value', 'value'), prevent_initial_call=True)
 def convert_rolling_resistance(rr_type, value):
     """Convert the entered value when switching between Crr and Prr."""
     if rr_type == "Prr":
-        return (round(value * PRR_PER_CRR, 1) if value is not None else None, 0.1, "Rolling resistance power at 8 m/s (Prr), W",
+        return (round(value * PRR_PER_CRR, 1) if value is not None else None, "Rolling resistance power at 8 m/s (Prr), W",
                 rolling_resistance_hint("Prr"))
-    return (round(value / PRR_PER_CRR, 5) if value is not None else None, 0.0001, "Rolling resistance coefficient (Crr)",
+    return (round(value / PRR_PER_CRR, 5) if value is not None else None, "Rolling resistance coefficient (Crr)",
             rolling_resistance_hint("Crr"))
 
 
@@ -903,9 +904,16 @@ def analysis_outputs(example, input_method, upload_contents, upload_filename, ur
             if not url:
                 return error("Please upload a route file or enter a RideWithGPS link first.")
 
-    values = [power_flat, power_up, power_down, weight, cda_flat, cda_up, cda_down, rr_value]
-    if any(value is None for value in values):
-        return error("Please fill in all rider parameters.")
+    # Empty is also what the browser passes for a value outside the field's limits (min, max)
+    power, cda = "0 to 3000 W", "0 to 1 m²"
+    fields = [("Power, flat", power_flat, power), ("Power, uphill", power_up, power), ("Power, downhill", power_down, power),
+              ("System weight", weight, "0 to 200 kg"), ("CdA, flat", cda_flat, cda), ("CdA, uphill", cda_up, cda),
+              ("CdA, downhill", cda_down, cda), (rr_type, rr_value, "at least 0" if rr_type == "Crr" else "at least 0 W")]
+    invalid = [f"{name} ({rule})" for name, value, rule in fields if value is None]
+    if len(invalid) == 1:
+        return error(f"Please check {invalid[0]}: the field is empty or the value is outside this range.")
+    if invalid:
+        return error(f"Please check {'; '.join(invalid)}. These fields are empty or their values are outside these ranges.")
 
     start = None
     if weather_on:
