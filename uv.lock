@@ -9,7 +9,7 @@ resolution-markers = [
 
 [[package]]
 name = "aeroracle"
-version = "4.1.1"
+version = "4.2.2"
 source = { virtual = "." }
 dependencies = [
     { name = "astral" },
@@ -78,7 +78,7 @@ requires-dist = [
     { name = "plotly", marker = "extra == 'web'", specifier = ">=7.1.0" },
     { name = "polars", specifier = ">=2.0.0,<3" },
     { name = "psutil", marker = "extra == 'monitoring'", specifier = ">=7.2.2" },
-    { name = "pygeodesy", marker = "extra == 'tools'", specifier = ">=26.10.20" },
+    { name = "pygeodesy", marker = "extra == 'tools'", specifier = ">=26.10.26" },
     { name = "pyproj", specifier = ">=3.8.0" },
     { name = "python-dateutil", specifier = ">=2.9.0" },
     { name = "rasterio", specifier = ">=1.5.2" },
@@ -1563,11 +1563,11 @@ wheels = [
 
 [[package]]
 name = "pygeodesy"
-version = "26.10.20"
+version = "26.10.26"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/39/b7/ae00e5bd17ad57957fbfa40ec7f05fb62eba39f51e683c9a2f165096169c/pygeodesy-26.10.20.tar.gz", hash = "sha256:9120808100226e09182d82aafdcfeac1db12407a77d57293a2256b5fd293fa5a", size = 9170520, upload-time = "2026-10-22T00:56:54.665Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/13/50/5fd0dc203fabd76a79ed1d9e84f3edaf230e3feeffa935a176e5de081e6a/pygeodesy-26.10.26.tar.gz", hash = "sha256:3e7f4059238ff604dbfaa70c4f36559d844a1564936947a33d9ef15836aa73a9", size = 9153767, upload-time = "2026-10-26T18:53:11.072Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ee/87/6646f9d010265bd5d0bd577d152d102bae5239288d9b09cdf826b4b684a5/pygeodesy-26.10.20-py2.py3-none-any.whl", hash = "sha256:15fe9a69843567827e591304585f33f10983c2c2516b51047b45f906c0e0e4be", size = 1135204, upload-time = "2026-10-22T00:56:52.54Z" },
+    { url = "https://files.pythonhosted.org/packages/01/bb/ed6fa61334201fb2db0f4e72032256e19aeae164aeda6fe28c7bc2637ba0/pygeodesy-26.10.26-py2.py3-none-any.whl", hash = "sha256:41ed7a02184025e3cb1d50484213b6f0e7b256954631fb61fd7b62be52e8f94b", size = 1133449, upload-time = "2026-10-26T18:53:09.03Z" },
 ]
 
 [[package]]

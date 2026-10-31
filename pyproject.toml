@@ -59,7 +59,7 @@ monitoring = [
 tools = [
     "geopandas>=1.2.0",
     "pandas>=3.1.0",
-    "pygeodesy>=26.10.20",
+    "pygeodesy>=26.10.26",
     "wget>=3.2",
 ]
 
