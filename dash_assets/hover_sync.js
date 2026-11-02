@@ -242,6 +242,7 @@
                     'marker.color': [option.color], 'marker.colorscale': [option.colorscale],
                     'marker.cmin': option.cmin, 'marker.cmax': option.cmax, 'marker.colorbar.title.text': option.title,
                     'marker.colorbar.tickmode': option.tickvals ? 'array' : 'auto', 'marker.colorbar.tickvals': [option.tickvals || null],
+                    'marker.colorbar.ticktext': [option.ticktext || null],  // Category names, e.g. sun and shade
                 }, [MAP_ROUTE_TRACE]);
                 // Meaning of the colorbar's ends (plot_interactive.colorbar_end_labels), e.g. tail/head wind
                 const ends = option.ends || ['', ''];

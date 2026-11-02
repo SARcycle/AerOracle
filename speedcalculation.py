@@ -7,6 +7,7 @@ from scipy import signal
 
 import config
 import utilities
+import shade
 import weather
 from parameters import PerGradient, PowerSummary
 
@@ -52,6 +53,8 @@ def __init__(parameters, assets):
     if parameters.time: # If no time is given -> no weather adjustment
         if weather.add_weather(assets, parameters):
             assets = weatherAdjustment(assets, parameters)
+        print('- Calculating Sun and Terrain Shadow')
+        shade.add_sun_state(parameters, assets)  # At the final passing times
 
     return assets
 

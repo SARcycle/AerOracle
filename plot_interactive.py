@@ -10,6 +10,8 @@ import plotly.colors
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+import shade
+
 
 def calculate_mapbox_bounds(lats, lons, padding_percent=15, min_span=0.01):
     """
@@ -169,6 +171,11 @@ TEMPERATURE_COLOR = '#3d8fd6'
 START_COLOR, FINISH_COLOR = '#1d4f91', '#15202b'
 SUMMIT_SYMBOL = 'aeroracle-summit'  # Mountain icon, added to the map in the browser (hover_sync.js)
 
+# Sun and terrain shadow (index: shade.SUN, SHADE, TUNNEL, NIGHT, UNKNOWN): warm sun, cool shade, greys of different
+# lightness for the rest; bands of the profile in the shade and night colors, translucent
+SUN_STATE_COLORS = ['#eb6834', '#2a78d6', '#8a8984', '#3d3b38', '#cfcdc6']
+PROFILE_BANDS = {shade.SHADE: 'rgba(42,120,214,0.14)', shade.NIGHT: 'rgba(61,59,56,0.16)'}
+
 # Gradient bands of the elevation profile: (upper limit [%], color)
 GRADIENT_BANDS = [(-9, '#08306b'), (-6, '#2171b5'), (-3, '#6baed6'), (3, '#9ccf8d'), (6, '#f2c12e'), (9, '#ea7d24'), (math.inf, '#c63a2f')]
 
@@ -212,7 +219,31 @@ def route_data(parameters, assets):
         wind_speed=track['headwind_ms'] if track.has('headwind_ms') else zeros,
         yaw=track['yaw_angle_deg'] if track.has('yaw_angle_deg') else zeros,  # Wind direction relative to travel direction
         temperature=track['temperature_c'] if track.has('temperature_c') else zeros,
+        sun=track.has('sun_state'),
     )
+
+
+SUN_TEXTS = {shade.SUN: "Unshaded by terrain", shade.SHADE: "Shaded by terrain", shade.TUNNEL: "Tunnel",
+             shade.NIGHT: "Night (sun below the horizon)", shade.UNKNOWN: "Horizon unknown (no elevation data)"}
+
+
+def sun_texts(track):
+    """Hover line per point, e.g. "Shaded by terrain"."""
+    return [SUN_TEXTS[s] for s in track['sun_state']]
+
+
+def sun_band_legend(track):
+    """Explanation of the profile's bands present along the route, e.g. "Bands: terrain shadow (blue).", else ''."""
+    if not track.has('sun_state'):
+        return ''
+    present = [name for k, name in ((shade.SHADE, "terrain shadow (blue)"), (shade.NIGHT, "night (grey)")) if (track['sun_state'] == k).any()]
+    return f"Bands: {', '.join(present)}. " if present else ''
+
+
+def sun_bands(track):
+    """Shaded and night stretches as (start km, end km, state) for the profile's background bands."""
+    state, km = track['sun_state'], track['distance_m'] / 1000
+    return [(km[a], km[min(b, len(km) - 1)], k) for k in PROFILE_BANDS for a, b in shade.stretches(state == k)]
 
 
 def color_options(parameters, assets):
@@ -222,11 +253,11 @@ def color_options(parameters, assets):
     """
     d = route_data(parameters, assets)
 
-    def option(values, colorscale, cmin, cmax, title, ends=None, tickvals=None):
-        # ends: meaning of the negative (left) and positive (right) end of the colorbar; tickvals: fixed colorbar ticks
+    def option(values, colorscale, cmin, cmax, title, ends=None, tickvals=None, ticktext=None):
+        # ends: meaning of the negative (left) and positive (right) end of the colorbar; tickvals (ticktext): fixed colorbar ticks
         return dict(color=np.round(values, 2).tolist(),
                     colorscale=colorscale if isinstance(colorscale, list) else plotly.colors.get_colorscale(colorscale),
-                    cmin=float(cmin), cmax=float(cmax), title=title, ends=ends, tickvals=tickvals)
+                    cmin=float(cmin), cmax=float(cmax), title=title, ends=ends, tickvals=tickvals, ticktext=ticktext)
 
     wind_limit = np.round(np.nanmax([4, np.abs(np.percentile(d['wind_speed'], 5)), np.abs(np.percentile(d['wind_speed'], 95))]))
     options = {}
@@ -241,6 +272,14 @@ def color_options(parameters, assets):
     colors, limits = gradient_scale()
     options['Gradient'] = option(d['gradient'], banded_colorscale(colors, limits, -GRADIENT_SCALE_LIMIT, GRADIENT_SCALE_LIMIT),
                                  -GRADIENT_SCALE_LIMIT, GRADIENT_SCALE_LIMIT, "Gradient [%]", tickvals=limits)
+    if assets.track.has('sun_state'):  # One color per state (shade.STATE_NAMES), only the states along this route on the colorbar
+        state = assets.track['sun_state']
+        shown = [k for k in range(len(shade.STATE_NAMES)) if (state == k).any()] or [shade.SUN]
+        position = {k: n for n, k in enumerate(shown)}
+        options['Terrain shadow'] = option(
+            np.array([position[k] for k in state]), banded_colorscale([SUN_STATE_COLORS[k] for k in shown], [n + 0.5 for n in range(len(shown) - 1)],
+                                                                     -0.5, len(shown) - 0.5),
+            -0.5, len(shown) - 0.5, "Terrain shadow", tickvals=list(range(len(shown))), ticktext=[shade.STATE_NAMES[k] for k in shown])
     return options
 
 
@@ -281,6 +320,10 @@ def map_figure(parameters, assets, options, selected, summits=(), theme='light')
         hovertext = [f"Wind: {w:.1f} m/s {wl}<br>Yaw: {y:.1f}° {yl}" for w, wl, y, yl in zip(d['wind_speed'], wind_label, d['yaw'], yaw_label)]
         hover_lines += ["%{hovertext}", "Temp: %{customdata[4]:.1f}°C"]
         customdata.append(d['temperature'])
+    if d['sun']:
+        sun = sun_texts(assets.track)
+        hovertext = [f"{h}<br>{s}" for h, s in zip(hovertext, sun)] if hovertext else sun
+        hover_lines += [] if d['weather'] else ["%{hovertext}"]
     hover_lines.append("Coordinates: %{lat:.4f}, %{lon:.4f}")
 
     option = options[selected]
@@ -291,7 +334,8 @@ def map_figure(parameters, assets, options, selected, summits=(), theme='light')
         mode='lines+markers',
         marker=dict(size=6, color=option['color'], colorscale=option['colorscale'], cmin=option['cmin'], cmax=option['cmax'],
                     colorbar=COLORBAR | dict(title=dict(text=option['title'], side='top', font=dict(size=13)),
-                                             tickmode='array' if option['tickvals'] else 'auto', tickvals=option['tickvals']), showscale=True),
+                                             tickmode='array' if option['tickvals'] else 'auto', tickvals=option['tickvals'],
+                                             ticktext=option.get('ticktext')), showscale=True),
         line=dict(width=3, color='rgba(100,100,100,0.3)'),
         customdata=np.column_stack(customdata),
         text=d['formatted_elapsed_time'],
@@ -354,7 +398,9 @@ def profile_figure(parameters, assets, summits=(), theme='light'):
         name='Elevation',
         customdata=np.column_stack([d['lats'], d['lons'], gradient]),
         text=d['formatted_elapsed_time'],
-        hovertemplate='Elevation: %{y:.0f} m<br>Gradient: %{customdata[2]:.1f}%<br>Elapsed time: %{text}<extra></extra>',
+        hovertext=sun_texts(assets.track) if d['sun'] else None,
+        hovertemplate='Elevation: %{y:.0f} m<br>Gradient: %{customdata[2]:.1f}%<br>Elapsed time: %{text}'
+                      + ('<br>%{hovertext}' if d['sun'] else '') + '<extra></extra>',
     ), secondary_y=False)
 
     if d['weather']:
@@ -391,10 +437,12 @@ def profile_figure(parameters, assets, summits=(), theme='light'):
         hovermode='x unified',  # Hover anywhere above a distance
         # Opaque labels: with the transparent figure background, the hover box would be transparent over the gradient bands
         hoverlabel=dict(bgcolor=colors['label_bg'], bordercolor=colors['label_border'], font=dict(color=colors['line'])),
-        shapes=[dict(  # Cursor, moved by hover_sync.js
+        shapes=[dict(  # Cursor, moved by hover_sync.js (first shape: PROFILE_CURSOR_SHAPE)
             type='line', xref='x', yref='paper', x0=0, x1=0, y0=0, y1=1,
             line=dict(color=CURSOR_COLOR, width=2), visible=False
-        )],
+        )] + [dict(  # Terrain shadow and night as bands behind the profile (visible above it)
+            type='rect', xref='x', yref='paper', x0=a, x1=b, y0=0, y1=1, fillcolor=PROFILE_BANDS[k], line=dict(width=0), layer='below'
+        ) for a, b, k in (sun_bands(assets.track) if d['sun'] else [])],
         annotations=[dict(x=s['top_km'], y=s['top_m'], text=f"{s['top_m']:.0f} m", showarrow=False, yshift=shift,
                           # Labels near the ends align inwards, clear of the axes
                           xanchor='right' if s['top_km'] > 0.95 * km[-1] else 'left' if s['top_km'] < 0.05 * km[-1] else 'center',

@@ -168,6 +168,7 @@ def tunnelheightcorrection(parameters, assets):
     if mask is None or not mask.any():
         return assets
 
+    assets.track.set(in_tunnel=mask)  # E.g. for the sun and shade along the route (shade.py)
     print_data_version('Adjusting Elevation of Tunnel Passages', file_location)
     interpolate_elevation(assets, ~mask)
 

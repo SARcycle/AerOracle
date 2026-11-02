@@ -40,6 +40,8 @@ POINT_COLUMNS = {
     # 'precipitation_mm_s'            # Precipitation rate [mm/s]                    (weather)
     # 'curve_radius_m'                # Curve radius of the route [m], inf = straight (speedcalculation)
     # 'yaw_angle_deg'                 # Apparent wind yaw angle [°], >0 = from right (speedcalculation)
+    # 'in_tunnel'                     # True within OSM tunnels                      (tunnels_bridges)
+    # 'sun_state'                     # shade.SUN, SHADE, TUNNEL, NIGHT or UNKNOWN   (shade, with a start time)
 }
 
 # Columns of track.cues
