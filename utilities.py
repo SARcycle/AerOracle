@@ -702,13 +702,26 @@ def getpixelvalues(lat, lon, tilename):
             pixel_values[:] = -999
     return pixel_values
 
-def read_shapes(shapefile_path) -> list:
-    """All geometries of a shapefile, multi-part geometries split into single parts."""
+def bounding_box(lat, lon):
+    """(min x, min y, max x, max y) of the points for read_shapes(bbox=...), in their coordinates; None without points."""
+    lat, lon = np.asarray(lat, dtype=float), np.asarray(lon, dtype=float)
+    known = np.isfinite(lat) & np.isfinite(lon)
+    if not known.any():
+        return None
+    return float(lon[known].min()), float(lat[known].min()), float(lon[known].max()), float(lat[known].max())
+
+def read_shapes(shapefile_path, bbox=None) -> list:
+    """Geometries of a shapefile, multi-part geometries split into single parts.
+
+    With bbox (see bounding_box), only those whose envelope intersects it: a point can only lie within a geometry
+    that intersects the bounding box of the points, so point tests give the same result, many times faster.
+    """
     import fiona
     import shapely
     from shapely.geometry import shape
     with fiona.open(str(shapefile_path)) as source:
-        geometries = [shape(feature['geometry']) for feature in source if feature['geometry'] is not None]
+        features = source.filter(bbox=bbox) if bbox is not None else source
+        geometries = [shape(feature['geometry']) for feature in features if feature['geometry'] is not None]
     return list(shapely.get_parts(geometries))
 
 def _points_within(lat, lon, shapes):
@@ -723,10 +736,6 @@ def points_in_shapes(lat, lon, shapes) -> np.ndarray:
     mask = np.zeros(len(lat), dtype=bool)
     mask[_points_within(lat, lon, shapes)[0]] = True
     return mask
-
-def count_points_in_shapes(lat, lon, shapes) -> int:
-    """Number of (point, shape) pairs with the point lying within the shape."""
-    return _points_within(lat, lon, shapes).shape[1]
 
 def timezone_at(lat, lon):
     """Time zone at a location (the time zone of this computer if there is none, e.g. at sea)."""

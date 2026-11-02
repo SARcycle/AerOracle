@@ -70,6 +70,7 @@ def safe_restore_from_archive(file_location, asset_type, folder_prefix):
         return False
 
 def __init__(parameters, assets):
+    print('- Correcting Elevation of Tunnels and Bridges')
     find_osm_country(parameters, assets)
     assets = bridgeheightcorrection(parameters, assets)
     assets = tunnelheightcorrection(parameters, assets)
@@ -100,14 +101,15 @@ def find_osm_country(parameters, assets):
             parameters.__setattr__('countries', [])
             return
 
-    hit_count = 0
+    assigned = np.zeros(len(lat), dtype=bool)
     ctry = []
+    bbox = utilities.bounding_box(lat, lon)  # Outlines away from the route are skipped while reading
     for outline in outlines:  # Until every point has been assigned to a country
-        if hit_count >= len(lat):
+        if assigned.all():
             break
-        hits = utilities.count_points_in_shapes(lat, lon, utilities.read_shapes(outline))
-        if hits > 0:
-            hit_count += hits
+        inside = utilities.points_in_shapes(lat, lon, utilities.read_shapes(outline, bbox=bbox))
+        if inside.any():
+            assigned |= inside  # Distinct points: near borders a point lies within two (overlapping) outlines
             country = os.path.basename(outline).replace('_dissolved', '')
             if country not in ctry:
                 ctry.append(country)
@@ -131,6 +133,7 @@ def passage_mask(parameters, assets, asset_type):
 
     lat, lon = assets.track['lat'], assets.track['lon']
     mask = np.zeros(len(lat), dtype=bool)
+    bbox = utilities.bounding_box(lat, lon)  # Only the polygons near the route are read
 
     for country in parameters.countries:
         country_file = os.path.join(file_location, country)
@@ -138,7 +141,7 @@ def passage_mask(parameters, assets, asset_type):
             print(f'- {asset_type.capitalize()} for {country} could not be found')
         else:
             try:
-                mask |= utilities.points_in_shapes(lat, lon, utilities.read_shapes(country_file))
+                mask |= utilities.points_in_shapes(lat, lon, utilities.read_shapes(country_file, bbox=bbox))
             except Exception as e:
                 print(f'- Error processing {asset_type} for {country}: {e}')
 
@@ -158,7 +161,7 @@ def print_data_version(message, file_location):
     file_list = glob.glob(os.path.join(file_location, '*MultiPoly.shp'))
     if len(file_list) > 0:
         file_date = datetime.datetime.fromtimestamp(os.path.getmtime(file_list[0]))
-        print(f'- {message} (V{file_date.strftime("%Y.%m")})')
+        print(f'\t- {message} (V{file_date.strftime("%Y.%m")})')
 
 def tunnelheightcorrection(parameters, assets):
     mask, file_location = passage_mask(parameters, assets, 'tunnels')

@@ -479,7 +479,7 @@ def swissAlti3DElevation(parameters, work):
 def pointsinpolygon(point_lat, point_lon, shapefile_path):
     """Boolean mask of the points lying within any polygon of the shapefile (all False if it cannot be read)."""
     try:
-        polygons = utilities.read_shapes(shapefile_path)
+        polygons = utilities.read_shapes(shapefile_path, bbox=utilities.bounding_box(point_lat, point_lon))
     except Exception:
         return np.zeros(len(point_lat), dtype=bool)
     return utilities.points_in_shapes(point_lat, point_lon, polygons)
