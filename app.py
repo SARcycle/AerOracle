@@ -684,7 +684,7 @@ def rail():
                     display_format='YYYY-MM-DD', first_day_of_week=1)),  # Monday (browsers expose only the language, not the regional format)
                 field("Local start time (24 h)", dbc.Input(id='start-time', type='text', placeholder='HH:MM', size='sm'), 'start-time'),  # A native time input follows the browser language
             ], className='ao-fields two'),
-                dbc.Switch(id='terrain-shadow', label="Terrain shadow", value=False)]),  # Opt-in: the analysis is faster without
+                dbc.Switch(id='terrain-shadow', label="Calculate terrain shadow", value=False, className='mt-2')]),  # Opt-in: faster without
             html.Div("Up to 7 days ahead, or a past date", className='ao-hint'),
         ]),
         dbc.Button("Analyze route", id='analyze', color='primary', className='ao-analyze'),
