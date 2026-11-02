@@ -28,9 +28,8 @@ It runs as a web app or on the command line, and writes the course back as TCX, 
   UV index from Open-Meteo, Visual Crossing or meteoblue, with fallback to a second provider. The forecast wind
   (10 m above ground) is converted to rider height with a power law whose effective exponent (`wind_shear_exponent`
   in `config.toml`, default 0.5) accounts for the terrain's roughness and shelter; checked against measured rides.
-- **Sun and terrain shadow** at the time you pass (with a start time): every 100 m, whether mountains hide the sun,
-  from the local elevation models out to 100 km, with Earth curvature and refraction. Shown on the map, as bands in
-  the profile and as distance in the shade. Terrain only: trees, buildings and clouds are not included.
+- **Terrain shadow** at the time you pass (off by default):
+  Calculated at every 100 m distance, based on local elevation models. Shown on the map and as distance and time in the shade (including tunnels and night). Terrain only, trees and buildings not included.
 - **Climb detection** with summits added as course points, and summits moved to the actual high point.
 - **What-if table**: how much faster or slower ±1% (`whatif_pct` in `config.toml`) in weight, power, CdA or Crr makes you.
 - **Course export**: TCX, GPX and FIT.

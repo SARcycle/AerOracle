@@ -298,6 +298,7 @@ def analyze(route_path, settings):
         argv.append('--climbs')
     args = parameters.Parameters(argv)
     args.time = settings['start_time'] or False  # datetime, bypassing the date parsing of the command line
+    args.terrain_shadow = settings.get('terrain_shadow', False)  # Opt-in in the web app (the command line always calculates it)
     args.output = False
     args.weather_file = settings.get('weather_file')  # Stored weather instead of API calls (example route)
 
@@ -677,12 +678,13 @@ def rail():
         step("3", "Options", [
             dbc.Switch(id='climbs', label="Detect climbs", value=True),
             dbc.Switch(id='weather-on', label="Weather forecast", value=False),
-            html.Div(id='start-time-section', hidden=True, children=html.Div([
+            html.Div(id='start-time-section', hidden=True, children=[html.Div([
                 field("Start date", dcc.DatePickerSingle(
                     id='start-date', date=today, min_date_allowed=date(2000, 1, 1), max_date_allowed=today + timedelta(days=7),
                     display_format='YYYY-MM-DD', first_day_of_week=1)),  # Monday (browsers expose only the language, not the regional format)
                 field("Local start time (24 h)", dbc.Input(id='start-time', type='text', placeholder='HH:MM', size='sm'), 'start-time'),  # A native time input follows the browser language
-            ], className='ao-fields two')),
+            ], className='ao-fields two'),
+                dbc.Switch(id='terrain-shadow', label="Terrain shadow", value=False)]),  # Opt-in: the analysis is faster without
             html.Div("Up to 7 days ahead, or a past date", className='ao-hint'),
         ]),
         dbc.Button("Analyze route", id='analyze', color='primary', className='ao-analyze'),
@@ -867,19 +869,20 @@ def show_progress(n_intervals, job):
 @app.callback(
     Output('results', 'children'), Output('analysis-key', 'data'),
     Output('weather-on', 'value'), Output('start-date', 'date'), Output('start-time', 'value'), Output('climbs', 'value'),
-    Output('progress-poll', 'disabled'), Output('progress', 'hidden'),
+    Output('terrain-shadow', 'value'), Output('progress-poll', 'disabled'), Output('progress', 'hidden'),
     Input('job', 'data'),
     State('input-method', 'value'), State('upload', 'contents'), State('upload', 'filename'), State('url', 'value'),
     State('course-rename', 'value'), State('course-name', 'value'),
     State('power-flat', 'value'), State('power-up', 'value'), State('power-down', 'value'),
     State('weight', 'value'), State('cda-flat', 'value'), State('cda-up', 'value'), State('cda-down', 'value'),
     State('rr-type', 'value'), State('rr-value', 'value'), State('cornering', 'value'), State('climbs', 'value'),
-    State('weather-on', 'value'), State('start-date', 'date'), State('start-time', 'value'), State('theme', 'data'),
+    State('weather-on', 'value'), State('start-date', 'date'), State('start-time', 'value'), State('terrain-shadow', 'value'),
+    State('theme', 'data'),
     prevent_initial_call=True,
 )
 def run_analysis(job, *inputs):
     if not job or not JOB_ID.fullmatch(str(job.get('id', ''))):
-        return (dash.no_update,) * 6 + (True, True)
+        return (dash.no_update,) * 7 + (True, True)
     PROGRESS.start(job['id'])
     try:
         return analysis_outputs(bool(job.get('example')), *inputs) + (True, True)  # Done: stop polling, hide the progress panel
@@ -889,17 +892,17 @@ def run_analysis(job, *inputs):
 
 def analysis_outputs(example, input_method, upload_contents, upload_filename, url, course_rename, course_name,
                      power_flat, power_up, power_down, weight, cda_flat, cda_up, cda_down,
-                     rr_type, rr_value, cornering, climbs, weather_on, start_date, start_time, theme):
+                     rr_type, rr_value, cornering, climbs, weather_on, start_date, start_time, terrain_shadow, theme):
     """Outputs of run_analysis except for the progress panel: results, analysis key and the rail values for the example."""
-    unchanged = (dash.no_update,) * 4
+    unchanged = (dash.no_update,) * 5
 
     def error(message):
         return (html.Div(dbc.Alert(message, color='danger'), className='ao-results'), None, *unchanged)
 
     if example:  # Sample route: the stage day and climbs, with the rider parameters as entered
-        upload_contents, url, climbs, weather_on = None, None, True, True
+        upload_contents, url, climbs, weather_on, terrain_shadow = None, None, True, True, True
         start_date, start_time = EXAMPLE_START.date().isoformat(), EXAMPLE_START.strftime('%H:%M')
-        rail_update = (True, start_date, start_time, True)
+        rail_update = (True, start_date, start_time, True, True)
     else:
         rail_update = unchanged
         if input_method == "Upload file":
@@ -932,6 +935,7 @@ def analysis_outputs(example, input_method, upload_contents, upload_filename, ur
     settings = dict(power_flat=power_flat, power_up=power_up, power_down=power_down, weight=weight,
                     cda_flat=cda_flat, cda_up=cda_up, cda_down=cda_down, rr_type=rr_type,
                     crr=rr_value if rr_type == "Crr" else rr_value / PRR_PER_CRR, climbs=climbs, start_time=start,
+                    terrain_shadow=bool(terrain_shadow and start),
                     cornering=cornering if cornering in CORNERING_LEVELS else config.CORNERING,
                     weather_file=str(EXAMPLE_WEATHER) if example and EXAMPLE_WEATHER.exists() else None)
 

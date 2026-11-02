@@ -53,8 +53,12 @@ def __init__(parameters, assets):
     if parameters.time: # If no time is given -> no weather adjustment
         if weather.add_weather(assets, parameters):
             assets = weatherAdjustment(assets, parameters)
+    if parameters.time and getattr(parameters, 'terrain_shadow', True):  # Web app: opt-in switch
         print('- Calculating Sun and Terrain Shadow')
-        shade.add_sun_state(parameters, assets)  # At the final passing times
+        try:
+            shade.add_sun_state(parameters, assets)  # At the final passing times
+        except Exception as e:  # Optional: never stop the analysis; without it, map option and figure are not shown
+            print(f'\t- Terrain shadow not available: {e}')
 
     return assets
 
