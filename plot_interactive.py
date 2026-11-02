@@ -171,10 +171,9 @@ TEMPERATURE_COLOR = '#3d8fd6'
 START_COLOR, FINISH_COLOR = '#1d4f91', '#15202b'
 SUMMIT_SYMBOL = 'aeroracle-summit'  # Mountain icon, added to the map in the browser (hover_sync.js)
 
-# Sun and terrain shadow (index: shade.SUN, SHADE, TUNNEL, NIGHT, UNKNOWN): warm sun, cool shade, greys of different
-# lightness for the rest; bands of the profile in the shade and night colors, translucent
+# Terrain shadow (index: shade.SUN, SHADE, TUNNEL, NIGHT, UNKNOWN): warm unshaded, cool shaded, greys of different
+# lightness for the rest
 SUN_STATE_COLORS = ['#eb6834', '#2a78d6', '#8a8984', '#3d3b38', '#cfcdc6']
-PROFILE_BANDS = {shade.SHADE: 'rgba(42,120,214,0.14)', shade.NIGHT: 'rgba(61,59,56,0.16)'}
 
 # Gradient bands of the elevation profile: (upper limit [%], color)
 GRADIENT_BANDS = [(-9, '#08306b'), (-6, '#2171b5'), (-3, '#6baed6'), (3, '#9ccf8d'), (6, '#f2c12e'), (9, '#ea7d24'), (math.inf, '#c63a2f')]
@@ -230,20 +229,6 @@ SUN_TEXTS = {shade.SUN: "Unshaded by terrain", shade.SHADE: "Shaded by terrain",
 def sun_texts(track):
     """Hover line per point, e.g. "Shaded by terrain"."""
     return [SUN_TEXTS[s] for s in track['sun_state']]
-
-
-def sun_band_legend(track):
-    """Explanation of the profile's bands present along the route, e.g. "Bands: terrain shadow (blue).", else ''."""
-    if not track.has('sun_state'):
-        return ''
-    present = [name for k, name in ((shade.SHADE, "terrain shadow (blue)"), (shade.NIGHT, "night (grey)")) if (track['sun_state'] == k).any()]
-    return f"Bands: {', '.join(present)}. " if present else ''
-
-
-def sun_bands(track):
-    """Shaded and night stretches as (start km, end km, state) for the profile's background bands."""
-    state, km = track['sun_state'], track['distance_m'] / 1000
-    return [(km[a], km[min(b, len(km) - 1)], k) for k in PROFILE_BANDS for a, b in shade.stretches(state == k)]
 
 
 def color_options(parameters, assets):
@@ -320,11 +305,14 @@ def map_figure(parameters, assets, options, selected, summits=(), theme='light')
         hovertext = [f"Wind: {w:.1f} m/s {wl}<br>Yaw: {y:.1f}° {yl}" for w, wl, y, yl in zip(d['wind_speed'], wind_label, d['yaw'], yaw_label)]
         hover_lines += ["%{hovertext}", "Temp: %{customdata[4]:.1f}°C"]
         customdata.append(d['temperature'])
-    if d['sun']:
-        sun = sun_texts(assets.track)
-        hovertext = [f"{h}<br>{s}" for h, s in zip(hovertext, sun)] if hovertext else sun
-        hover_lines += [] if d['weather'] else ["%{hovertext}"]
-    hover_lines.append("Coordinates: %{lat:.4f}, %{lon:.4f}")
+    if d['sun']:  # Terrain shadow as the last line, after the coordinates: the tail of the box as one text per point
+        tail = [f"Coordinates: {la:.4f}, {lo:.4f}<br>{s}" for la, lo, s in zip(d['lats'], d['lons'], sun_texts(assets.track))]
+        if d['weather']:
+            tail = [f"{h}<br>Temp: {t:.1f}°C<br>{x}" for h, t, x in zip(hovertext, d['temperature'], tail)]
+        hovertext = tail
+        hover_lines = hover_lines[:5] + ["%{hovertext}"]
+    else:
+        hover_lines.append("Coordinates: %{lat:.4f}, %{lon:.4f}")
 
     option = options[selected]
     fig = go.Figure()
@@ -398,9 +386,7 @@ def profile_figure(parameters, assets, summits=(), theme='light'):
         name='Elevation',
         customdata=np.column_stack([d['lats'], d['lons'], gradient]),
         text=d['formatted_elapsed_time'],
-        hovertext=sun_texts(assets.track) if d['sun'] else None,
-        hovertemplate='Elevation: %{y:.0f} m<br>Gradient: %{customdata[2]:.1f}%<br>Elapsed time: %{text}'
-                      + ('<br>%{hovertext}' if d['sun'] else '') + '<extra></extra>',
+        hovertemplate='Elevation: %{y:.0f} m<br>Gradient: %{customdata[2]:.1f}%<br>Elapsed time: %{text}<extra></extra>',
     ), secondary_y=False)
 
     if d['weather']:
@@ -437,12 +423,10 @@ def profile_figure(parameters, assets, summits=(), theme='light'):
         hovermode='x unified',  # Hover anywhere above a distance
         # Opaque labels: with the transparent figure background, the hover box would be transparent over the gradient bands
         hoverlabel=dict(bgcolor=colors['label_bg'], bordercolor=colors['label_border'], font=dict(color=colors['line'])),
-        shapes=[dict(  # Cursor, moved by hover_sync.js (first shape: PROFILE_CURSOR_SHAPE)
+        shapes=[dict(  # Cursor, moved by hover_sync.js
             type='line', xref='x', yref='paper', x0=0, x1=0, y0=0, y1=1,
             line=dict(color=CURSOR_COLOR, width=2), visible=False
-        )] + [dict(  # Terrain shadow and night as bands behind the profile (visible above it)
-            type='rect', xref='x', yref='paper', x0=a, x1=b, y0=0, y1=1, fillcolor=PROFILE_BANDS[k], line=dict(width=0), layer='below'
-        ) for a, b, k in (sun_bands(assets.track) if d['sun'] else [])],
+        )],
         annotations=[dict(x=s['top_km'], y=s['top_m'], text=f"{s['top_m']:.0f} m", showarrow=False, yshift=shift,
                           # Labels near the ends align inwards, clear of the axes
                           xanchor='right' if s['top_km'] > 0.95 * km[-1] else 'left' if s['top_km'] < 0.05 * km[-1] else 'center',

@@ -451,8 +451,9 @@ def conditions(args, data):
     if weather.sunshine_fraction is not None:
         items.append(("Sunshine", f"{weather.sunshine_fraction * 100:.0f}%", "of riding time"))
     sun = shade.summary(track)
-    if sun:  # Terrain only: clouds are in "Sunshine"
-        shade_km, shade_s = sun[shade.STATE_NAMES[shade.SHADE]]
+    if sun:  # Mountains, tunnels and the Earth itself (night); clouds are in "Sunshine"
+        shaded = [sun[shade.STATE_NAMES[k]] for k in (shade.SHADE, shade.TUNNEL, shade.NIGHT)]
+        shade_km, shade_s = sum(km for km, _ in shaded), sum(s for _, s in shaded)
         items.append(("Terrain shadow", f"{shade_km:.0f} km", f"{shade_km / (track['distance_m'][-1] / 1000) * 100:.0f}% of the distance, "
                                                                f"{format_duration(shade_s)} h"))
     if weather.precipitation_mm is not None:
@@ -545,8 +546,7 @@ def results_layout(key, args, data, settings, theme='light'):
                       gradient_scale_legend()],
                      style={'display': 'flex', 'justifyContent': 'space-between', 'gap': '12px', 'flexWrap': 'wrap', 'alignItems': 'center'}),
             dcc.Graph(id='route-profile', figure=plot_interactive.profile_figure(args, data, summits, theme=theme), config={'displaylogo': False}),
-            html.Div(plot_interactive.sun_band_legend(track) + f"Select a stretch to zoom in, double click to zoom out. Data: {sources}",
-                     className='ao-hint'),
+            html.Div(f"Select a stretch to zoom in, double click to zoom out. Data: {sources}", className='ao-hint'),
         ], className='ao-card-body', style={'borderTop': '1px solid var(--ao-line)'}),
         dcc.Store(id='map-color-options', data=options),
     ], className='ao-card')
