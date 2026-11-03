@@ -26,7 +26,7 @@ STATE_NAMES = ['Unshaded', 'Shaded', 'Tunnel', 'Night', 'Horizon unknown']  # By
 
 STATION_SPACING_M = 100      # Sun and horizon every 100 m along the route
 NEAR_FIELD_M = 60            # Terrain closer than this is ignored: 30 m DEMs cannot resolve the road's cut into a slope
-RAY_REACH_M = 100_000        # Far enough for low winter sun in the Alps (3,000 m higher at 3 deg: 57 km)
+RAY_REACH_M = 60_000         # Peak with topographic prominence of 3,000 m at 3 deg sun elevation still caught
 RAY_SAMPLES = 200            # Geometric spacing: dense near the road, sparse far away
 MIN_SHADE_M = 300            # Shorter stretches of shade (or of sun between shade) are dropped as noise
 RIDER_HEIGHT_M = 1.2

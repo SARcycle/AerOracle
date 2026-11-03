@@ -1,3 +1,4 @@
+import functools
 import os
 import shutil
 import socket
@@ -453,7 +454,16 @@ def correct_peak_location(parameters, assets):
     return assets
 
 def daylight_warning(parameters, assets) -> str | None:
-    """Warning if the ride starts before sunrise or ends after sunset (None if it does not)."""
+    """Warning if the ride starts before sunrise or ends after sunset; computed once per analysis."""
+    cached = getattr(assets, '_daylight_warning', None)
+    if cached is not None and cached[0] == parameters.time:
+        return cached[1]
+    warning = _daylight_warning(parameters, assets)
+    assets._daylight_warning = (parameters.time, warning)
+    return warning
+
+
+def _daylight_warning(parameters, assets) -> str | None:
     import datetime
     import astral
     from astral.sun import sun
@@ -737,11 +747,17 @@ def points_in_shapes(lat, lon, shapes) -> np.ndarray:
     mask[_points_within(lat, lon, shapes)[0]] = True
     return mask
 
+@functools.lru_cache(maxsize=1)
+def timezone_finder():
+    """One TimezoneFinder per process."""
+    from timezonefinder import TimezoneFinder
+    return TimezoneFinder()
+
+
 def timezone_at(lat, lon):
     """Time zone at a location (the time zone of this computer if there is none, e.g. at sea)."""
-    from timezonefinder import TimezoneFinder
     from zoneinfo import ZoneInfo
-    name = TimezoneFinder().timezone_at(lat=float(lat), lng=float(lon))
+    name = timezone_finder().timezone_at(lat=float(lat), lng=float(lon))
     return ZoneInfo(name) if name else datetime.now().astimezone().tzinfo
 
 def route_timezone(track):

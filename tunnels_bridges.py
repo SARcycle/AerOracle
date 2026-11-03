@@ -1,4 +1,5 @@
 import datetime
+import functools
 import glob
 import os
 import time
@@ -76,14 +77,29 @@ def __init__(parameters, assets):
     assets = tunnelheightcorrection(parameters, assets)
     return assets
 
+@functools.lru_cache(maxsize=4)
+def outline_bounds(outline_path, folder_mtime) -> dict:
+    """
+    Bounds (min lon, min lat, max lon, max lat) of every outline shapefile, read once per process. Cached per folder
+    and its modification time (-> update safe).
+    """
+    import fiona
+    bounds = {}
+    for path in glob.glob(os.path.join(outline_path, '*MultiPoly.shp')):
+        try:
+            with fiona.open(path) as source:
+                bounds[path] = tuple(source.bounds)
+        except Exception:
+            pass  # Unreadable: no bounds, so it is opened as before
+    return bounds
+
+
 def find_osm_country(parameters, assets):
     lat, lon = assets.track['lat'][0::5], assets.track['lon'][0::5]
 
     outline_path = os.path.join(parameters.folder_prefix, "GeoData/OSM/outlines")
 
-    # If outlines is a symlink, resolve it; otherwise use it directly
-    if os.path.islink(outline_path):
-        outline_path = os.path.realpath(outline_path)
+    outline_path = os.path.realpath(outline_path)  # Version folder behind the symlink
 
     outlines = glob.glob(os.path.join(outline_path, '*MultiPoly.shp'))
 
@@ -104,9 +120,13 @@ def find_osm_country(parameters, assets):
     assigned = np.zeros(len(lat), dtype=bool)
     ctry = []
     bbox = utilities.bounding_box(lat, lon)  # Outlines away from the route are skipped while reading
+    bounds = outline_bounds(outline_path, os.stat(outline_path).st_mtime)
     for outline in outlines:  # Until every point has been assigned to a country
         if assigned.all():
             break
+        b = bounds.get(outline)
+        if bbox and b and (b[2] < bbox[0] or b[0] > bbox[2] or b[3] < bbox[1] or b[1] > bbox[3]):
+            continue  # Outline far from the route: not even opened
         inside = utilities.points_in_shapes(lat, lon, utilities.read_shapes(outline, bbox=bbox))
         if inside.any():
             assigned |= inside  # Distinct points: near borders a point lies within two (overlapping) outlines

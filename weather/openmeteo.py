@@ -120,12 +120,7 @@ def getOpenMeteoForecast(lat, lon, elevation, forecast_time):
                     "time_range_days": _time_range_days
                 }
                 api_call_id = track_api_call_with_resources(tracker, tracker_params, success=api_success)
-                log_resource_usage(metrics, operation_type="api_call", api_call_id=api_call_id)
-                print(f"\t  └─ API call: {metrics.duration_seconds:.2f}s | CPU: {metrics.cpu_max:.0f}% | RAM: {metrics.memory_max_mb:.0f}MB")
-                if metrics.cpu_max > 80:
-                    print("\t     Warning: high CPU usage")
-                if metrics.memory_percent_max > 80:
-                    print("\t     Warning: high RAM usage")
+                log_resource_usage(metrics, operation_type="api_call", api_call_id=api_call_id)  # Shown in the dashboard
     else:
         responses = openmeteo.weather_api(url, params={**params, **specific_params}, method='POST')  # Body instead of URL: no length limit for long routes
 

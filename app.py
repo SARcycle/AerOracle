@@ -6,6 +6,7 @@ Production:   gunicorn app:server --workers 1 --threads 8 --timeout 600 --bind 1
 """
 import base64
 import json
+import os
 import re
 import shutil
 import sys
@@ -31,6 +32,7 @@ import plot_interactive
 import shade
 import speedcalculation
 import tcx_writer
+import tunnels_bridges
 import utilities
 import weather
 
@@ -192,6 +194,10 @@ class ProgressLog:
         with self._lock:
             self._jobs.pop(job_id, None)
 
+    def active(self):
+        """True while the current thread runs an analysis."""
+        return getattr(self._local, 'job', None) is not None
+
     def add(self, text):
         """Add the step(s) printed by the current thread's analysis; level 1 for indented (tab) lines."""
         job_id = getattr(self._local, 'job', None)
@@ -212,12 +218,16 @@ class ProgressLog:
 
 
 class ProgressStdout:
-    """Console output that also feeds the progress log."""
+    """
+    Console output: during an analysis only to its progress log, so route details never reach the server log (journald)
+    """
     def __init__(self, stream, progress):
         self._stream, self._progress = stream, progress
 
     def write(self, text):
-        self._progress.add(text)
+        if self._progress.active():
+            self._progress.add(text)
+            return len(text)
         return self._stream.write(text)
 
     def __getattr__(self, name):
@@ -312,14 +322,51 @@ def analyze(route_path, settings):
 
 
 def write_outputs(key, data, course_name):
-    """Write route.tcx (and route.gpx, route.fit if gpsbabel is available) to the analysis folder."""
+    """
+    Write TCX to the analysis folder, with the FIT course point types for converting it on download
+    (GPX and FIT: see converted_file).
+    """
     folder = WORK_DIR / key
     tcx_path = folder / 'route.tcx'
     tcx_writer.write_tcx(str(tcx_path), data.track)
     if course_name:
         tcx_writer.update_tcx_name(tcx_path, course_name)
-    for suffix in tcx_writer.GPSBABEL_FORMATS:
-        tcx_writer.export(tcx_path, folder / f'route{suffix}', data.track)
+    (folder / FIT_POINT_TYPES_FILE).write_text(json.dumps(tcx_writer.fit_point_types(data.track)))
+
+
+FIT_POINT_TYPES_FILE = 'fit_point_types.json'
+GPSBABEL_AVAILABLE = shutil.which('gpsbabel') is not None
+
+
+def download_name(file_stem, course_name=None):
+    """File name (without suffix) of the downloads: the course name if the user renamed the course, else <route>_processed."""
+    if course_name:
+        name = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '', course_name).strip().strip('.')
+        name = re.sub(r'\s+', '_', name)  # Spaces as underscores, like the names of uploaded files
+        if name:
+            return name[:120]
+    return f'{file_stem}_processed'
+
+
+def converted_file(folder, suffix):
+    """
+    GPX or FIT of the analysis folder, converted from TCX with gpsbabel on the first download. None if the conversion fails.
+    """
+    path = folder / f'route{suffix}'
+    if path.exists():
+        return path
+    partial = folder / f'route.partial{suffix}'  # Renamed when complete: a second click never gets a half-written file
+    if suffix == '.fit':
+        types_file = folder / FIT_POINT_TYPES_FILE
+        types = json.loads(types_file.read_text()) if types_file.exists() else []
+        done = tcx_writer.write_fit(folder / 'route.tcx', partial, point_types=types)
+    else:
+        done = tcx_writer.convert(folder / 'route.tcx', partial)
+    if not done or not partial.exists():
+        partial.unlink(missing_ok=True)
+        return None
+    partial.replace(path)
+    return path
 
 
 def log_analysis(data, success):
@@ -534,7 +581,7 @@ def results_layout(key, args, data, settings, theme='light'):
     # Weather is shown in the profile (temperature) and the conditions card only
 
     options = plot_interactive.color_options(args, data)
-    selected = 'Wind' if 'Wind' in options else 'Speed'
+    selected = next(name for name in ('Terrain shadow', 'Wind', 'Speed') if name in options)  # Terrain shadow if it was calculated
     sources = ', '.join(['© OpenStreetMap contributors', *([utilities.WEATHER_PROVIDER_NAMES[args.weather]] if has_weather else []), *args.dem])
     route_card = html.Section([
         html.Div([html.H2("Route"), html.Div([html.Label("Color by", htmlFor='map-color', className='ao-hint'),
@@ -554,11 +601,15 @@ def results_layout(key, args, data, settings, theme='light'):
 
     folder = WORK_DIR / key
     def download_button(fmt):
-        path = folder / f'route.{fmt.lower()}'
-        size = path.stat().st_size if path.exists() else 0
-        size_text = f"{size / 1e6:.1f} MB" if size > 1e6 else f"{size / 1e3:.0f} kB"
-        return html.Button([html.B(fmt), html.Span(size_text if size else "needs gpsbabel 1.10 or newer")],
-                           id=f'download-{fmt.lower()}-button', className='ao-dl', disabled=not size, n_clicks=0)
+        if fmt == "TCX":  # Written with the analysis; GPX and FIT are converted from it on the first click
+            path = folder / 'route.tcx'
+            size = path.stat().st_size if path.exists() else 0
+            text, available = (f"{size / 1e6:.1f} MB" if size > 1e6 else f"{size / 1e3:.0f} kB"), bool(size)
+        else:
+            available = GPSBABEL_AVAILABLE
+            text = "converted on download" if available else "needs gpsbabel 1.10 or newer"
+        return html.Button([html.B(fmt), html.Span(text)], id=f'download-{fmt.lower()}-button', className='ao-dl',
+                           disabled=not available, n_clicks=0)
 
     return html.Div([
         html.Div([html.Span([html.Span(f"{label}: ", className='ao-meta-label'), value]) for label, value in meta], className='ao-ride-meta'),
@@ -750,6 +801,27 @@ app = dash.Dash(
 )
 app.layout = serve_layout
 server = app.server  # For gunicorn
+
+
+def warm_up():
+    """
+    At start: load the libraries imported only during an analysis, fill the per-process caches (time zones, OSM
+    outline bounds).
+    """
+    start = time.time()
+    try:
+        import astral.sun, fiona, shapely, srtm, statsmodels.api  # noqa: F401
+        utilities.timezone_finder()
+        outlines = Path(config.DATA_DIR or '') / 'GeoData' / 'OSM' / 'outlines'
+        if config.DATA_DIR and outlines.exists():
+            folder = os.path.realpath(outlines)  # The same key as in tunnels_bridges.find_osm_country
+            tunnels_bridges.outline_bounds(folder, os.stat(folder).st_mtime)
+    except Exception as e:  # Never prevent the start
+        print(f'- Warm-up incomplete: {e}')
+    print(f'- Warm-up done in {time.time() - start:.1f} s')
+
+
+warm_up()
 
 
 @server.route('/robots.txt')
@@ -950,9 +1022,9 @@ def analysis_outputs(example, input_method, upload_contents, upload_filename, ur
         route_path, file_stem = save_route(key, upload_contents, upload_filename, url, example=example)
         args, data = analyze(route_path, settings)
         route_path.unlink(missing_ok=True)  # The route itself is not kept
-        print("- Writing TCX, GPX and FIT files")
+        print("- Writing TCX file")  # GPX and FIT: converted on download
         write_outputs(key, data, course_name if course_rename else None)
-        (WORK_DIR / key / 'name.txt').write_text(file_stem)
+        (WORK_DIR / key / 'name.txt').write_text(download_name(file_stem, course_name if course_rename else None))
         log_analysis(data, success=True)
         print("- Preparing the results")
         layout = results_layout(key, args, data, settings, theme=theme if theme in plot_interactive.THEMES else 'light')
@@ -980,11 +1052,15 @@ def download(tcx_clicks, gpx_clicks, fit_clicks, key):
         return dash.no_update, dash.no_update
     suffix = {'download-gpx-button': '.gpx', 'download-fit-button': '.fit'}.get(dash.ctx.triggered_id, '.tcx')
     folder = WORK_DIR / key if key and re.fullmatch(r'[0-9a-f]{32}', key) else None
-    if folder is None or not (folder / f'route{suffix}').exists():
+    if folder is None or not (folder / 'route.tcx').exists():
         return dash.no_update, dbc.Alert("The processed files are no longer available (deleted after 30 minutes). Please analyze the route again.",
                                          color='warning', className='mt-2 mb-0')
+    path = folder / 'route.tcx' if suffix == '.tcx' else converted_file(folder, suffix)
+    if path is None:
+        return dash.no_update, dbc.Alert(f"The {suffix[1:].upper()} file could not be created (needs gpsbabel 1.10 or newer). "
+                                         "The TCX file contains the same course.", color='warning', className='mt-2 mb-0')
     name = (folder / 'name.txt').read_text()
-    return dcc.send_file(str(folder / f'route{suffix}'), filename=f'{name}_processed{suffix}'), None
+    return dcc.send_file(str(path), filename=f'{name}{suffix}'), None
 
 
 dash.clientside_callback(  # System light/dark setting at page load, so the figures are built in the right colors

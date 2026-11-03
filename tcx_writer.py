@@ -257,11 +257,20 @@ def set_fit_course_point_types(fit_path, types: list) -> bool:
     return True
 
 
-def write_fit(tcx_path, fit_path, track) -> bool:
-    """FIT course from the TCX file (via gpsbabel), with the course point types of track.cues. Returns False if gpsbabel fails."""
+def fit_point_types(track) -> list:
+    """FIT course point types (enum values) of track.cues in the order of the course points written to the TCX."""
+    return [fit_course_point_type(cue['type']) for cue in snapped_cues(track)]
+
+
+def write_fit(tcx_path, fit_path, track=None, point_types=None) -> bool:
+    """
+    FIT course from the TCX file (via gpsbabel), with the course point types of track.cues (or point_types, see
+    fit_point_types). Returns False if gpsbabel fails.
+    """
     if not convert(tcx_path, fit_path):
         return False
-    if not set_fit_course_point_types(fit_path, [fit_course_point_type(cue['type']) for cue in snapped_cues(track)]):
+    types = point_types if point_types is not None else fit_point_types(track)
+    if not set_fit_course_point_types(fit_path, types):
         print('- FIT course point types could not be set (generic)')
     return True
 
