@@ -140,6 +140,14 @@ def forward_fill(values, first=0):
     return values[np.maximum.accumulate(valid_idx)]
 
 
+NO_START_TIME = 946_684_800  # 2000-01-01 00:00 UTC: course times without a start time
+
+
+def ride_start(parameters):
+    """Unix time [s, UTC] of the start: the given start time, else NO_START_TIME (only the elapsed times matter then)."""
+    return parameters.time if parameters.time else NO_START_TIME
+
+
 def update_ride_time(start_time, delta_distance, speed):
     """Timestamp of every point when riding with speed, starting at start_time."""
     segment_time = delta_distance / speed
@@ -243,8 +251,7 @@ def noWeatherAdjustment(assets, parameters):
     track = assets.track
     speed = cornered_speeds(parameters, track, steady_speeds(parameters, track, with_weather=False), with_weather=False)
 
-    timezone_offset = utilities.get_timezone_offset(assets, parameters)
-    track.set(speed_ms=speed, timestamp=update_ride_time((parameters.time or 0) - timezone_offset, track['delta_distance_m'], speed))
+    track.set(speed_ms=speed, timestamp=update_ride_time(ride_start(parameters), track['delta_distance_m'], speed))
     setattr(parameters, 'power_out', calculate_power_numbers(track['timestamp'], track['gradient'], parameters.power, parameters.gradient_threshold))
 
     return assets
@@ -264,8 +271,7 @@ def weatherAdjustment(assets, parameters):
 
     speed = cornered_speeds(parameters, track, steady_speeds(parameters, track, with_weather=True), with_weather=True)
 
-    timezone_offset = utilities.get_timezone_offset(assets, parameters)
-    track.set(speed_ms=speed, timestamp=update_ride_time(parameters.time - timezone_offset, track['delta_distance_m'], speed))
+    track.set(speed_ms=speed, timestamp=update_ride_time(ride_start(parameters), track['delta_distance_m'], speed))
     setattr(parameters, 'power_out', calculate_power_numbers(track['timestamp'], track['gradient'], parameters.power, parameters.gradient_threshold))
     track.set(yaw_angle_deg=calculate_yaw_angle(track))
 

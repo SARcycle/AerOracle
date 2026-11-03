@@ -192,7 +192,21 @@ class Track:
         # Calculate distance if not present
         if len(self) > 0 and (self['distance_m'] == 0).all():
             self.set(distance_m=calculate_cumulative_distance_np(self['lat'], self['lon']))
+        self._drop_stalled_points()
         self._assign_crs_distances()
+
+    def _drop_stalled_points(self):
+        """
+        Drop track points whose distance does not exceed the largest distance before them due to GPS drift.
+        Since such steps have no length, model gives them no time -> breaks the FIT timing.
+        """
+        if len(self) < 2:
+            return
+        distance = self['distance_m']
+        before = np.fmax.accumulate(np.concatenate(([-np.inf], distance[:-1])))  # Largest distance before each point
+        keep = ~(distance <= before)  # NaN distances are kept
+        if not keep.all():
+            self.points = self.points.filter(pl.Series(keep))
 
     def _parse_gpx(self):
         """Parse GPX file."""
@@ -495,7 +509,10 @@ class Track:
 
 
     def _assign_crs_distances(self):
-        """Take each cue's distance from the track point at the same position (and time, if known)."""
+        """
+        Take each cue's distance from track point at the same position (and time, if known). If track passes
+        the position several times (e.g. out and back), the pass closest to cue's own distance from the file.
+        """
         if self.cues.height == 0:
             return
         lat, lon, timestamp, distance = self['lat'], self['lon'], self['timestamp'], self['distance_m']
@@ -506,7 +523,7 @@ class Track:
                 same_position &= timestamp == cue['timestamp']
             match = np.flatnonzero(same_position)
             if len(match) > 0:
-                cue_distance[j] = distance[match[0]]
+                cue_distance[j] = distance[match[np.argmin(np.abs(distance[match] - cue_distance[j]))]]
         self.cues = self.cues.with_columns(distance_m=cue_distance)
 
 

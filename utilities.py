@@ -448,6 +448,7 @@ def correct_peak_location(parameters, assets):
         cues['lat'][i] = lat[peakidx]
         cues['lon'][i] = lon[peakidx]
         cues['timestamp'][i] = timestamp[peakidx]
+        cues['distance_m'][i] = distance[peakidx]  # Snapping (tcx_writer.snapped_cues) picks the pass by distance
         if not re.match(r'^\d+_', cues['name'][i]):
             cues['name'][i] = str(str(int(np.round(elevation[peakidx],0)))+'_'+cues['name'][i])[:10]
     track.cues = pl.DataFrame(cues, schema=track.cues.schema)
@@ -776,6 +777,3 @@ def set_start_time(parameters, assets):
         display_error_message('Forecasts more than 7 days in advance are not supported. Calculating without wind.')
         parameters.time = False
 
-def get_timezone_offset(assets, parameters):
-    offset = datetime.fromtimestamp(parameters.time or 0, route_timezone(assets.track)).utcoffset()
-    return offset.total_seconds()

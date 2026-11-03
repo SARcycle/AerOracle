@@ -55,19 +55,25 @@ def trackpoints(track) -> list:
 def snapped_cues(track) -> list:
     """
     track.cues as dicts (name, timestamp, lat, lon, type, notes) in course order:
-    - Snaps course points to the matching (or else nearest) track point
+    - Snaps course points to the nearest track point; if track passes position
+      multiple times (e.g. out and back), to pass closest to cue's distance
     - Sorts by time
     """
-    lat, lon, timestamp = track['lat'], track['lon'], track['timestamp']
+    lat, lon, timestamp, distance = track['lat'], track['lon'], track['timestamp'], track['distance_m']
     cues = []
     for cue in track.cues.iter_rows(named=True):
+        cue_distance = cue.get('distance_m')
+        known_distance = cue_distance is not None and np.isfinite(cue_distance)
         trackpt_idx = np.flatnonzero((lat == cue['lat']) & (lon == cue['lon']))
         if len(trackpt_idx) > 0:
             # Snap to exact track point
-            nearest_idx = trackpt_idx[0]
+            nearest_idx = trackpt_idx[np.argmin(np.abs(distance[trackpt_idx] - cue_distance))] if known_distance else trackpt_idx[0]
         else:
-            # Find nearest track point if no exact match
-            nearest_idx = np.argmin(np.sqrt((lat - cue['lat'])**2 + (lon - cue['lon'])**2))
+            # If no exact match: find nearest track point within ±500 m
+            candidates = np.flatnonzero(np.abs(distance - cue_distance) <= 500) if known_distance else np.array([], dtype=int)
+            if len(candidates) == 0:
+                candidates = np.arange(len(lat))
+            nearest_idx = candidates[np.argmin((lat[candidates] - cue['lat'])**2 + (lon[candidates] - cue['lon'])**2)]
         cues.append(dict(cue, lat=lat[nearest_idx], lon=lon[nearest_idx], timestamp=timestamp[nearest_idx]))
     cues.sort(key=lambda cue: -np.inf if np.isnan(cue['timestamp']) else cue['timestamp'])
     return cues
@@ -188,6 +194,8 @@ _FIT_TYPE_ALIASES = {'4th_category': 'fourth_category', '3rd_category': 'third_c
                      '1st_category': 'first_category', 'hors_categorie': 'hors_category', 'uturn': 'u_turn'}
 FIT_COURSE_POINT_MESSAGE = 32
 FIT_COURSE_POINT_TYPE_FIELD = 5
+FIT_COURSE_POINT_TIMESTAMP_FIELD, FIT_COURSE_POINT_DISTANCE_FIELD = 1, 4  # uint32 [s], uint32 [cm]
+FIT_RECORD_MESSAGE, FIT_RECORD_TIMESTAMP_FIELD, FIT_RECORD_DISTANCE_FIELD = 20, 253, 5
 
 
 def fit_course_point_type(point_type: str) -> int:
@@ -209,14 +217,20 @@ def fit_crc(data: bytes, crc: int = 0) -> int:
 
 def set_fit_course_point_types(fit_path, types: list) -> bool:
     """
-    Overwrite the type of the course_point messages of a FIT file in file order with types (FIT enum values)
-    and update the file CRC. Returns False (file unchanged) if the number of course points does not match.
+    Correct course_point messages of a FIT file written by gpsbabel and update the file CRC. gpsbabel keeps the
+    course point times of the TCX, but takes distance from nearest track position, then sorting by it -> 
+    in case of multiple passes (loops, out and back) a course point gets the wrong pass and order.
+    - Distance: from record at the same time
+    - Order: by time, i.e. order of TCX course points
+    - Type: types (FIT enum values) in this order
+    Returns False (file unchanged) if number of course points does not match.
     """
     data = bytearray(Path(fit_path).read_bytes())
     header_size = data[0]
     end = header_size + int.from_bytes(data[4:8], 'little')
-    type_offsets = []   # Byte positions of the course point type values
-    definitions = {}    # Local message type -> (global message number, data size, offset of the type field or None)
+    course_points = []  # (start, size, local type, byte position of the type, of the timestamp, of the distance, byte order)
+    record_distance = {}  # Record timestamp -> distance (raw FIT value)
+    definitions = {}    # Local message type -> (global message number, data size, {field number: offset}, byte order)
     pos = header_size
     while pos < end:
         record_header = data[pos]
@@ -225,33 +239,51 @@ def set_fit_course_point_types(fit_path, types: list) -> bool:
             local_type = (record_header >> 5) & 0x3
         elif record_header & 0x40:  # Definition message
             local_type = record_header & 0x0F
-            big_endian = data[pos + 1] == 1
-            global_number = int.from_bytes(data[pos + 2:pos + 4], 'big' if big_endian else 'little')
+            byte_order = 'big' if data[pos + 1] == 1 else 'little'
+            global_number = int.from_bytes(data[pos + 2:pos + 4], byte_order)
             field_count = data[pos + 4]
             fields = [data[pos + 5 + 3 * i:pos + 8 + 3 * i] for i in range(field_count)]
             pos += 5 + 3 * field_count
-            size, type_offset = 0, None
+            size, offsets = 0, {}
             for number, field_size, _ in fields:
-                if number == FIT_COURSE_POINT_TYPE_FIELD:
-                    type_offset = size
+                offsets[number] = (size, field_size)
                 size += field_size
             if record_header & 0x20:  # Developer fields
                 developer_count = data[pos]
                 size += sum(data[pos + 2 + 3 * i] for i in range(developer_count))
                 pos += 1 + 3 * developer_count
-            definitions[local_type] = (global_number, size, type_offset)
+            definitions[local_type] = (global_number, size, offsets, byte_order)
             continue
         else:  # Normal data message
             local_type = record_header & 0x0F
-        global_number, size, type_offset = definitions[local_type]
-        if global_number == FIT_COURSE_POINT_MESSAGE and type_offset is not None:
-            type_offsets.append(pos + type_offset)
+        global_number, size, offsets, byte_order = definitions[local_type]
+        field = lambda number: (pos + offsets[number][0]) if offsets.get(number, (0, 0))[1] == 4 else None  # uint32 fields
+        if global_number == FIT_COURSE_POINT_MESSAGE and FIT_COURSE_POINT_TYPE_FIELD in offsets:
+            course_points.append((pos, size, local_type, pos + offsets[FIT_COURSE_POINT_TYPE_FIELD][0],
+                                  field(FIT_COURSE_POINT_TIMESTAMP_FIELD), field(FIT_COURSE_POINT_DISTANCE_FIELD), byte_order))
+        elif global_number == FIT_RECORD_MESSAGE:
+            time_pos, distance_pos = field(FIT_RECORD_TIMESTAMP_FIELD), field(FIT_RECORD_DISTANCE_FIELD)
+            if time_pos is not None and distance_pos is not None:
+                record_distance.setdefault(int.from_bytes(data[time_pos:time_pos + 4], byte_order), data[distance_pos:distance_pos + 4])
         pos += size
 
-    if len(type_offsets) != len(types):
+    if len(course_points) != len(types):
         return False
-    for offset, point_type in zip(type_offsets, types):
-        data[offset] = point_type
+    uint32 = lambda at, byte_order: int.from_bytes(data[at:at + 4], byte_order)
+    for _, _, _, _, time_pos, distance_pos, byte_order in course_points:
+        if time_pos is not None and distance_pos is not None:
+            distance = record_distance.get(uint32(time_pos, byte_order))
+            if distance is not None:  # Records and course points of one file share the byte order (gpsbabel)
+                data[distance_pos:distance_pos + 4] = distance
+    # Order by time (then distance): swap the message contents between the course point slots, if they share one definition
+    if len({(local_type, size) for _, size, local_type, *_ in course_points}) == 1 and all(cp[4] is not None for cp in course_points):
+        _, _, _, _, time_pos, distance_pos, byte_order = course_points[0]
+        key = lambda cp: (uint32(cp[4], byte_order), uint32(cp[5], byte_order) if cp[5] is not None else 0)
+        contents = [bytes(data[cp[0]:cp[0] + cp[1]]) for cp in sorted(course_points, key=key)]
+        for cp, content in zip(course_points, contents):
+            data[cp[0]:cp[0] + cp[1]] = content
+    for (_, _, _, type_pos, _, _, _), point_type in zip(course_points, types):
+        data[type_pos] = point_type
     data[end:end + 2] = fit_crc(data[:end]).to_bytes(2, 'little')
     Path(fit_path).write_bytes(data)
     return True
