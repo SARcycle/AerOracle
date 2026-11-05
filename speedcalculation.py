@@ -198,13 +198,14 @@ def steady_speeds(parameters, track, with_weather):
     return np.minimum(speed, MAX_SPEED_MS)
 
 
-def cornered_speeds(parameters, track, steady, with_weather):
+def cornered_speeds(parameters, track, steady, with_weather, with_pedalling=False):
     """
     Speed [m/s] at every point with the corners: limit sqrt(a_lat * r) per point (rider level, at most the tyre grip),
     braking before corners (backward pass) and accelerating after them with the rider's power (forward pass, which also
     carries momentum into short climbs). No pedalling above the pedal strike lean angle or the cadence limit.
     With weather, roads are wet where the precipitation reaches WET_ROAD_MM_PER_H: less grip and more caution.
     Braking and cornering share the tyre grip (friction circle): where the bike corners hard, less braking is left.
+    with_pedalling: also return whether the rider pedals on the way to each point (bool array).
     """
     level_lateral_g, level_braking_g = CORNERING[parameters.cornering]
     gravity = track['gravity_ms2']
@@ -233,9 +234,11 @@ def cornered_speeds(parameters, track, steady, with_weather):
     drag, resistance, headwind, power, pedal_strike, max_acceleration, steady = (
         x.tolist() for x in (drag, resistance, headwind, power, pedal_strike, max_acceleration, np.asarray(steady)))
     speed = [min(steady[0], limit[0])]
+    pedalling_at = [steady[0] < pedalling_limit]
     for i in range(1, len(limit)):
         v = speed[-1]
         pedalling = v < pedalling_limit and v * v <= pedal_strike[i]
+        pedalling_at.append(pedalling)
         air = v + headwind[i]
         force = (power[i] / max(v, 1.0) if pedalling else 0.0) - drag[i] * air * abs(air) - resistance[i]
         acceleration = min(force / inertial_mass, max_acceleration[i])
@@ -243,15 +246,18 @@ def cornered_speeds(parameters, track, steady, with_weather):
         # Towards the steady speed: accelerating up to it, decelerating (momentum on climbs) down to it
         reached = min(reached, steady[i]) if acceleration >= 0 else max(reached, steady[i])
         speed.append(min(reached, limit[i]))
+    if with_pedalling:
+        return np.array(speed), np.array(pedalling_at)
     return np.array(speed)
 
 
 def noWeatherAdjustment(assets, parameters):
     print('- Calculating Rough Speeds (w/o Weather Data)')
     track = assets.track
-    speed = cornered_speeds(parameters, track, steady_speeds(parameters, track, with_weather=False), with_weather=False)
+    speed, pedalling = cornered_speeds(parameters, track, steady_speeds(parameters, track, with_weather=False), with_weather=False,
+                                       with_pedalling=True)
 
-    track.set(speed_ms=speed, timestamp=update_ride_time(ride_start(parameters), track['delta_distance_m'], speed))
+    track.set(speed_ms=speed, pedalling=pedalling, timestamp=update_ride_time(ride_start(parameters), track['delta_distance_m'], speed))
     setattr(parameters, 'power_out', calculate_power_numbers(track['timestamp'], track['gradient'], parameters.power, parameters.gradient_threshold))
 
     return assets
@@ -269,9 +275,10 @@ def weatherAdjustment(assets, parameters):
         air_density = np.where(np.isnan(humid_air_density), air_density, humid_air_density)
     track.set(air_density_kgm3=air_density)
 
-    speed = cornered_speeds(parameters, track, steady_speeds(parameters, track, with_weather=True), with_weather=True)
+    speed, pedalling = cornered_speeds(parameters, track, steady_speeds(parameters, track, with_weather=True), with_weather=True,
+                                       with_pedalling=True)
 
-    track.set(speed_ms=speed, timestamp=update_ride_time(ride_start(parameters), track['delta_distance_m'], speed))
+    track.set(speed_ms=speed, pedalling=pedalling, timestamp=update_ride_time(ride_start(parameters), track['delta_distance_m'], speed))
     setattr(parameters, 'power_out', calculate_power_numbers(track['timestamp'], track['gradient'], parameters.power, parameters.gradient_threshold))
     track.set(yaw_angle_deg=calculate_yaw_angle(track))
 
@@ -286,6 +293,62 @@ def ride_time_s(parameters, track):
     with_weather = track.has('headwind_ms')
     speed = cornered_speeds(parameters, track, steady_speeds(parameters, track, with_weather), with_weather)
     return np.sum(track['delta_distance_m'][1:] / speed[1:])
+
+
+def wind_time_effect_s(parameters, track) -> float:
+    """Change of the riding time [s] by the wind (> 0 = slower) against the same ride in still air."""
+    calm = copy.copy(track)
+    calm.set(headwind_ms=np.zeros(len(track)))  # New points frame: track itself is unchanged
+    return float(ride_time_s(parameters, track) - ride_time_s(parameters, calm))
+
+
+POWER_GRID_STEP_M = 50       # Finest bin of the rider power grid (longer on very long routes: at most POWER_GRID_MAX_BINS)
+POWER_GRID_MAX_BINS = 4000
+
+
+def rider_power_grid(parameters, track) -> dict:
+    """
+    Energies along the route for the rider power plot, summed per fine bin (POWER_GRID_STEP_M). The browser groups the
+    bins to the zoom level and splits the rider's energy over the sinks (dash_assets/hover_sync.js, renderRiderPower):
+    sums of bins are exact for any grouping, so the split is calculated in one place only.
+    Per step [J], > 0 = taken from the bike: still-air drag, extra drag by head wind (< 0: tail wind), rolling, gravity
+    and kinetic energy (both signed); the rider's energy at the wheel where the model pedals (track 'pedalling'), at most
+    the set power; and the riding time [s].
+    """
+    with_weather = track.has('headwind_ms')
+    drag, _, headwind = resistance_terms(parameters, track, with_weather)
+    speed, step, distance = track['speed_ms'], track['delta_distance_m'], track['distance_m']
+    weight_force, angle = parameters.weight * track['gravity_ms2'], np.arctan(track['gradient'])
+    inertial_mass = parameters.weight + WHEEL_INERTIA / WHEEL_RADIUS ** 2
+
+    previous = np.concatenate(([speed[0]], speed[:-1]))
+    mean_speed = (speed + previous) / 2  # On the way from the previous point
+    duration = np.divide(step, speed, out=np.zeros(len(speed)), where=speed > 0)  # As in the riding time
+    air = mean_speed + headwind
+    energy = {
+        'Air': drag * mean_speed ** 2 * step,
+        'Head wind': drag * (air * np.abs(air) - mean_speed ** 2) * step,
+        'Rolling': parameters.crr * weight_force * np.cos(angle) * step,
+        'Climbing': weight_force * np.sin(angle) * step,
+        'Accelerating': inertial_mass / 2 * (speed ** 2 - previous ** 2),
+    }
+    if not with_weather:
+        del energy['Head wind']
+    pedalling = track['pedalling'] if track.has('pedalling') else np.ones(len(speed), dtype=bool)
+    available = per_gradient(track['gradient'], parameters.power, parameters.gradient_threshold) * DRIVETRAIN_EFFICIENCY * duration
+    rider = np.where(pedalling, np.clip(sum(energy.values()), 0, available), 0)
+
+    bin_m = max(POWER_GRID_STEP_M, (distance[-1] - distance[0]) / POWER_GRID_MAX_BINS)
+    count = max(int(np.ceil((distance[-1] - distance[0]) / bin_m)), 1)
+    edges = np.minimum(distance[0] + np.arange(count + 1) * bin_m, distance[-1])
+    # Each step spread evenly over its distance, so steps longer than a bin fill all bins they cross (no empty bins):
+    # cumulative sums along the route, read at the bin edges
+    per_bin = lambda values, digits=0: np.round(np.diff(np.interp(edges, distance, np.cumsum(values))), digits).tolist()
+    return dict(
+        start_km=float(distance[0] / 1000), step_km=float(bin_m / 1000), efficiency=DRIVETRAIN_EFFICIENCY,
+        sinks={name: per_bin(values) for name, values in energy.items()},  # Order of the stack, bottom up
+        rider=per_bin(rider), time=per_bin(duration, 1),
+    )
 
 
 class Sensitivity(NamedTuple):

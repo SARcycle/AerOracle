@@ -1,12 +1,63 @@
-// Synchronized hover between the route map and the elevation profile (see plot_interactive.py):
-// - hovering the profile moves a marker to the corresponding location on the map
-// - hovering the route on the map moves a vertical line to the corresponding distance in the profile
+// Synchronized hover between the route map and the lower plot, the elevation profile or the rider power (see plot_interactive.py):
+// - hovering the lower plot moves a marker to the corresponding location on the map
+// - hovering the route on the map moves a vertical line to the corresponding distance in the lower plot
 // Runs entirely in the browser (Plotly.restyle / relayout), without server round trips.
 
 (function () {
     const MAP_ROUTE_TRACE = 0;
     const MAP_CURSOR_TRACE = 1;
     const PROFILE_ELEVATION_TRACE = 1;
+    const POWER_ID = 'route-power';  // Rider power: its elevation trace is the only one with customdata [lat, lon]
+    const POWER_BINS = 200;          // Rider power: about this many bins across the visible distance
+
+    // Rider power (plot_interactive.rider_power_figure): fills the stacked areas from the fine energy grid in
+    // layout.meta.riderPower (speedcalculation.rider_power_grid), grouped so that about POWER_BINS bins span the visible
+    // range [km0, km1] (whole route if null). Per group: the signed energies are netted (a dip or a tail wind reduces the
+    // sinks), the rider's energy is split over the remaining sinks in proportion, plus the drivetrain losses.
+    function renderRiderPower(plotDiv, range) {
+        const grid = plotDiv && plotDiv.layout && plotDiv.layout.meta && plotDiv.layout.meta.riderPower;
+        if (!grid || !plotDiv.data) {
+            return;
+        }
+        const count = grid.rider.length;
+        const span = range ? Math.abs(range[1] - range[0]) : count * grid.step_km;
+        const size = Math.max(1, Math.round(span / POWER_BINS / grid.step_km));  // Fine bins per group
+        const sinks = grid.names.filter((name) => name !== 'Drivetrain');
+        const windy = sinks.includes('Head wind');
+        const x = [];
+        const power = Object.fromEntries(grid.names.map((name) => [name, []]));
+        const percent = Object.fromEntries(grid.names.map((name) => [name, []]));  // Share of the bin's pedalled power (hover)
+        for (let start = 0; start < count; start += size) {
+            const end = Math.min(start + size, count);
+            let rider = 0, time = 0;
+            const net = Object.fromEntries(sinks.map((name) => [name, 0]));
+            for (let i = start; i < end; i++) {
+                rider += grid.rider[i];
+                time += grid.time[i];
+                sinks.forEach((name) => { net[name] += grid.sinks[name][i]; });
+            }
+            const used = {};
+            if (windy) {  // Tail wind reduces the still-air drag; head wind is a sink of its own
+                used['Air'] = net['Head wind'] >= 0 ? net['Air'] : Math.max(net['Air'] + net['Head wind'], 0);
+                used['Head wind'] = Math.max(net['Head wind'], 0);
+            } else {
+                used['Air'] = Math.max(net['Air'], 0);
+            }
+            ['Rolling', 'Climbing', 'Accelerating'].forEach((name) => { used[name] = Math.max(net[name], 0); });
+            const total = sinks.reduce((sum, name) => sum + used[name], 0);
+            const share = total > 0 ? rider / total : 0;
+            sinks.forEach((name) => { used[name] *= share; });
+            used['Drivetrain'] = rider * (1 / grid.efficiency - 1);
+            x.push(grid.start_km + (start + end) / 2 * grid.step_km);
+            const pedalled = grid.names.reduce((sum, name) => sum + used[name], 0);
+            grid.names.forEach((name) => {
+                power[name].push(time > 0 ? Math.round(used[name] / time * 10) / 10 : 0);
+                percent[name].push(pedalled > 0 ? 100 * used[name] / pedalled : 0);
+            });
+        }
+        const update = {x: grid.names.map(() => x), y: grid.names.map((name) => power[name]), customdata: grid.names.map((name) => percent[name])};
+        Plotly.restyle(plotDiv, update, grid.names.map((_, i) => i));
+    }
 
     function plotlyDiv(id) {
         const container = document.getElementById(id);
@@ -160,6 +211,46 @@
         document.getElementById('route-map').scrollIntoView({behavior: 'smooth', block: 'start'});
     });
 
+    // Lower plot -> map: hover moves the map cursor (positionPoint picks the hovered point with [lat, lon]), zoom fits the map
+    function attachLowerPlot(plotDiv, mapId, positionPoint) {
+        if (plotDiv._aeroracleHoverSync) {
+            return;
+        }
+        plotDiv._aeroracleHoverSync = true;
+        const moveMapCursor = perFrame((position) => {
+            const target = plotlyDiv(mapId);
+            if (target) {
+                setMapCursor(target, ...(position || [null, null]));
+            }
+        });
+        plotDiv.on('plotly_hover', (event) => {
+            const point = event.points.find(positionPoint);
+            if (point && point.customdata) {
+                moveMapCursor([point.customdata[0], point.customdata[1]]);
+            }
+        });
+        plotDiv.on('plotly_unhover', () => moveMapCursor(null));
+
+        // Zoom -> map extent; double click (autorange) -> whole route
+        plotDiv.on('plotly_relayout', (event) => {
+            const target = plotlyDiv(mapId);
+            const range = event['xaxis.range'] || (event['xaxis.range[0]'] !== undefined && [event['xaxis.range[0]'], event['xaxis.range[1]']]);
+            if (!target || !(range || event['xaxis.autorange'])) {
+                return;  // E.g. the hover line (shapes)
+            }
+            if (range) {
+                fitMapToDistance(target, Math.min(...range), Math.max(...range));
+            } else {
+                fitMapToDistance(target, null, null);
+            }
+            renderRiderPower(plotDiv, range ? [Math.min(...range), Math.max(...range)] : null);  // Only the rider power has a grid
+            if (!plotDiv._aeroracleClimbZoom) {
+                document.querySelectorAll('.ao-climb-row.ao-selected').forEach((r) => r.classList.remove('ao-selected'));
+            }
+            plotDiv._aeroracleClimbZoom = false;
+        });
+    }
+
     function attach(mapId, profileId, attemptsLeft) {
         const mapDiv = plotlyDiv(mapId);
         const profileDiv = plotlyDiv(profileId);
@@ -175,51 +266,24 @@
             window.aeroracleApplyPlotTheme();  // Light/dark colors of the new figures (theme.js)
         }
         // Listeners survive figure updates of the same graph; the partner graph is looked up per event
-        if (!profileDiv._aeroracleHoverSync) {
-            profileDiv._aeroracleHoverSync = true;
-            // Profile -> map: customdata of the elevation trace starts with [lat, lon]; null = no cursor
-            const moveMapCursor = perFrame((position) => {
-                const target = plotlyDiv(mapId);
-                if (target) {
-                    setMapCursor(target, ...(position || [null, null]));
-                }
-            });
-            profileDiv.on('plotly_hover', (event) => {
-                const point = event.points.find((p) => p.curveNumber === PROFILE_ELEVATION_TRACE);
-                if (point && point.customdata) {
-                    moveMapCursor([point.customdata[0], point.customdata[1]]);
-                }
-            });
-            profileDiv.on('plotly_unhover', () => moveMapCursor(null));
-
-            // Profile zoom -> map extent; double click (autorange) -> whole route
-            profileDiv.on('plotly_relayout', (event) => {
-                const target = plotlyDiv(mapId);
-                const range = event['xaxis.range'] || (event['xaxis.range[0]'] !== undefined && [event['xaxis.range[0]'], event['xaxis.range[1]']]);
-                if (!target || !(range || event['xaxis.autorange'])) {
-                    return;  // E.g. the hover line (shapes)
-                }
-                if (range) {
-                    fitMapToDistance(target, Math.min(...range), Math.max(...range));
-                } else {
-                    fitMapToDistance(target, null, null);
-                }
-                if (!profileDiv._aeroracleClimbZoom) {
-                    document.querySelectorAll('.ao-climb-row.ao-selected').forEach((r) => r.classList.remove('ao-selected'));
-                }
-                profileDiv._aeroracleClimbZoom = false;
-            });
+        attachLowerPlot(profileDiv, mapId, (p) => p.curveNumber === PROFILE_ELEVATION_TRACE);
+        const powerDiv = plotlyDiv(POWER_ID);
+        if (powerDiv && powerDiv.on) {
+            attachLowerPlot(powerDiv, mapId, (p) => Boolean(p.customdata));
+            renderRiderPower(powerDiv, null);  // New figure: whole route
         }
 
         if (!mapDiv._aeroracleHoverSync) {
             mapDiv._aeroracleHoverSync = true;
             // Map -> profile: customdata of the route trace starts with the distance [km]; null = no line
             const moveProfileLine = perFrame((distance) => {
-                const target = plotlyDiv(profileId);
-                if (target) {
-                    Plotly.relayout(target, distance === null ? {'shapes[0].visible': false}
-                        : {'shapes[0].x0': distance, 'shapes[0].x1': distance, 'shapes[0].visible': true});
-                }
+                [profileId, POWER_ID].forEach((id) => {  // Only the shown one: a hidden plot is not redrawn
+                    const target = plotlyDiv(id);
+                    if (target && target.offsetParent !== null) {
+                        Plotly.relayout(target, distance === null ? {'shapes[0].visible': false}
+                            : {'shapes[0].x0': distance, 'shapes[0].x1': distance, 'shapes[0].visible': true});
+                    }
+                });
             });
             mapDiv.on('plotly_hover', (event) => {
                 const point = event.points.find((p) => p.curveNumber === MAP_ROUTE_TRACE);
@@ -252,6 +316,31 @@
                 });
             }
             return window.dash_clientside.no_update;
+        },
+        // Lower plot of the route card: elevation profile or rider power. A plot drawn while hidden has the wrong size:
+        // resized once shown. Returns the hidden flags of the elevation and the power view and the classes of their legends
+        // (invisible, but keeping its space: the plot does not move).
+        switchProfile: function (view) {
+            const power = view === 'power';
+            setTimeout(() => {
+                const shown = plotlyDiv(power ? POWER_ID : 'route-profile');
+                if (shown) {
+                    Plotly.Plots.resize(shown);
+                }
+                const mapDiv = plotlyDiv('route-map');
+                const powerDiv = plotlyDiv(POWER_ID);
+                if (power && mapDiv && powerDiv && powerDiv.on) {
+                    attachLowerPlot(powerDiv, 'route-map', (p) => Boolean(p.customdata));
+                    if (!powerDiv.data[0].x || powerDiv.data[0].x.length === 0) {
+                        renderRiderPower(powerDiv, null);
+                    }
+                }
+                if (window.aeroracleApplyPlotTheme) {
+                    window.aeroracleApplyPlotTheme();
+                }
+            }, 0);
+            const slot = (shown) => 'ao-legend-slot' + (shown ? '' : ' ao-invisible');
+            return [power, !power, slot(!power), slot(power)];
         },
         // Called whenever new figures are rendered; attaches the listeners once per graph
         hoverSync: function (mapFigure, profileFigure) {

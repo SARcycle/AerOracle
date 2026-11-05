@@ -75,6 +75,7 @@ h1, h2, h3, h4 { font-family: var(--ao-font-display); font-weight: 600; letter-s
 /* Setup rail */
 .ao-rail { background: var(--ao-surface); border: 1px solid var(--ao-line); border-radius: 12px; box-shadow: var(--ao-shadow); position: sticky; top: 76px; }
 @media (max-width: 920px) { .ao-rail { position: static; } }
+@media (min-width: 921px) { .ao-only-stacked { display: none !important; } }  /* E.g. "Load your route": the setup is beside it */
 .ao-step { padding: 16px 18px; border-bottom: 1px solid var(--ao-line); display: grid; gap: 12px; }
 .ao-step-head { display: flex; align-items: center; gap: 10px; }
 .ao-step-no { width: 24px; height: 24px; border-radius: 50%; background: var(--ao-accent); color: var(--ao-accent-ink); display: grid; place-items: center; font-family: var(--ao-font-display); font-weight: 700; font-size: 15px; flex: none; }
@@ -141,6 +142,13 @@ h1, h2, h3, h4 { font-family: var(--ao-font-display); font-weight: 600; letter-s
 .ao-gradscale-ticks span { position: absolute; top: 1px; transform: translateX(-50%); }
 .ao-gradscale-unit { font-family: var(--ao-font-data); font-size: 11px; color: var(--ao-ink-3); line-height: 10px; }
 .ao-gradscale-name { font-family: var(--ao-font-body); font-size: 12px; margin-right: 2px; }
+.ao-legend-stack { display: grid; justify-items: end; }
+.ao-legend-slot { grid-area: 1 / 1; align-self: center; }
+.ao-invisible { visibility: hidden; }
+.ao-powerlegend { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ao-ink-2); }
+.ao-powerlegend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.ao-powerlegend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.ao-powerlegend i.ao-legend-line { width: 14px; height: 2px; border-radius: 1px; background: var(--ao-ink); opacity: .45; }  /* Elevation line */
 
 .ao-twocol { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; }
 @media (max-width: 1100px) { .ao-twocol { grid-template-columns: minmax(0, 1fr); } }
@@ -184,6 +192,7 @@ h1, h2, h3, h4 { font-family: var(--ao-font-display); font-weight: 600; letter-s
 .ao-wx > div { display: grid; gap: 1px; align-content: start; }
 .ao-wx b { font-family: var(--ao-font-display); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .ao-wx small { color: var(--ao-ink-3); font-size: 13px; }
+.ao-wx-extra { font-size: 18px; white-space: nowrap; }  /* Second value of a line, e.g. the time effect of the wind */
 .ao-has-help { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 
 .ao-downloads { display: flex; gap: 10px; flex-wrap: wrap; }

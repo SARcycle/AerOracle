@@ -60,22 +60,22 @@ CORNERING_HINTS = {  # Hairpin speeds: sqrt(a_lat * g * 10 m); lean angle: arcta
     'racer': "Brakes hard and late, leans close to grip limit (39°): rides a tight hairpin (10 m radius) at ~32 km/h. On wet roads (rain in forecast): 0.60 g (wet grip limit).",
 }
 
-DEFAULTS = dict(power=(205, 225, 0), cda=(0.35, 0.40, 0.29), weight=82.0, crr=0.0035)
+DEFAULTS = dict(power=config.DEFAULT_POWER, cda=config.DEFAULT_CDA, weight=config.DEFAULT_WEIGHT, crr=config.DEFAULT_CRR)  # config.toml
 # Bike presets, not shown yet (the chips are hidden). Gravel values are placeholders to be confirmed.
 RIDER_PRESETS = {
-    'Road': dict(cda=(0.35, 0.40, 0.29), crr=0.0035),
+    'Road': dict(cda=DEFAULTS['cda'], crr=DEFAULTS['crr']),
     'Triathlon/TT': dict(cda=(0.23, 0.23, 0.23), crr=0.0035),
     'Gravel': dict(cda=(0.40, 0.42, 0.32), crr=0.0055),
 }
 
 ABOUT = """
-AerOracle combines elevation data, weather forecasts, and aerodynamic calculations to estimate the riding time and
+AerOracle combines elevation data, weather data, and aerodynamic calculations to model the riding time and
 weather conditions along a cycling route.
 
 ### How to use
 
 1. **Load your route:** upload a TCX, GPX or FIT file, or enter a RideWithGPS link
-2. **Set the rider parameters:** power (flat, uphill, downhill), weight, drag area (CdA) and rolling resistance (Crr or Prr)
+2. **Set the rider parameters:** power (in the flat, uphill, downhill), weight, drag area (CdA) and rolling resistance (Crr or Prr)
 3. **Choose the options:** automatic climb detection and the weather forecast for a start date and time
 4. **Click "Analyze route"**
 
@@ -399,6 +399,27 @@ def format_duration(seconds):
     return f"{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
 
 
+def format_time_change(seconds):
+    """Signed time difference, e.g. '+3:12 min', '−0:42 min', '+1:03:12 h', '±0:00 min'."""
+    rounded = int(round(seconds))
+    sign = '+' if rounded > 0 else '−' if rounded < 0 else '±'
+    rounded = abs(rounded)
+    if rounded >= 3600:
+        return f"{sign}{rounded // 3600}:{rounded % 3600 // 60:02d}:{rounded % 60:02d} h"
+    return f"{sign}{rounded // 60}:{rounded % 60:02d} min"
+
+
+WIND_HELP = ("Mean wind along your direction of travel, time-weighted. The time is how much longer (+) or shorter (−) your ride "
+             "is than without wind. Headwind costs more time than the same tailwind saves, so even wind at an average of ±0 m/s can "
+             "cost time.")
+
+
+def power_legend(names):
+    """Colors of the power decomposition, in the head of the lower plot like the gradient scale."""
+    return html.Div([*(html.Span([html.I(style={'background': plot_interactive.POWER_SINK_COLORS[name]}), name]) for name in names),
+                     html.Span([html.I(className='ao-legend-line'), "Elevation"])], className='ao-powerlegend')
+
+
 def gradient_scale_legend():
     """Gradient bands as one bar, labeled at the boundaries like a ruler."""
     colors, boundaries = plot_interactive.gradient_scale()
@@ -493,7 +514,9 @@ def conditions(args, data):
     temperature = track['temperature_c']
     items = [
         ("Temperature", f"{np.nanmin(temperature):.0f}–{np.nanmax(temperature):.0f} °C", "along the route"),
-        ("Inline wind", f"{abs(wind):.1f} m/s", f"{'head' if wind >= 0 else 'tail'} wind, time-weighted"),
+        ("Inline wind", [f"{abs(wind):.1f} m/s", html.Span(f" · {format_time_change(speedcalculation.wind_time_effect_s(args, track))}",
+                                                           className='ao-wx-extra')],
+         f"{'head' if wind >= 0 else 'tail'} wind, time-weighted"),
         ("Mean yaw", f"{yaw:+.1f}°", "wind from the right" if yaw > 0 else "wind from the left" if yaw < 0 else "head-on"),
     ]
     if weather.sunshine_fraction is not None:
@@ -509,7 +532,7 @@ def conditions(args, data):
     if warning:  # Only when part of the ride is in the dark
         items.append(("Daylight", "Bring lights", warning))
     uv = weather.uv_index_max
-    help_texts = {}
+    help_texts = {"Inline wind": WIND_HELP}
     if uv is not None:  # Only in forecasts, not for past dates
         help_texts["UV index"] = f"UV index {uv:.1f}. {uv_info(uv)} Source: Swiss Federal Office of Public Health (BAG), www.bag.admin.ch/uv-index"
         items.append(("UV index", f"{uv:.1f}", uv_info(uv).split(':')[0]))
@@ -530,6 +553,11 @@ TURN_CUE_TYPES = {'left', 'right', 'straight', 'left_fork', 'right_fork', 'middl
 
 def climbs_detected(count):
     return "No climbs detected" if count == 0 else f"{count} climb{'' if count == 1 else 's'} detected"
+
+
+# Download buttons: where the file goes on the head unit (copied by USB)
+DOWNLOAD_TARGETS = {"TCX": "Garmin: into Garmin/NewFiles folder", "FIT": "Garmin: into Garmin/Courses folder",
+                    "GPX": "Wahoo: into routes folder"}
 
 
 def cue_contents(track):
@@ -583,6 +611,7 @@ def results_layout(key, args, data, settings, theme='light'):
     options = plot_interactive.color_options(args, data)
     selected = next(name for name in ('Terrain shadow', 'Wind', 'Speed') if name in options)  # Terrain shadow if it was calculated
     sources = ', '.join(['© OpenStreetMap contributors', *([utilities.WEATHER_PROVIDER_NAMES[args.weather]] if has_weather else []), *args.dem])
+    power_grid = speedcalculation.rider_power_grid(args, data.track)
     route_card = html.Section([
         html.Div([html.H2("Route"), html.Div([html.Label("Color by", htmlFor='map-color', className='ao-hint'),
                                               dbc.Select(id='map-color', options=list(options), value=selected, size='sm')],
@@ -590,10 +619,20 @@ def results_layout(key, args, data, settings, theme='light'):
         dcc.Graph(id='route-map', figure=plot_interactive.map_figure(args, data, options, selected, summits, theme=theme),
                   config={'scrollZoom': True, 'displaylogo': False}),
         html.Div([
-            html.Div([html.Span("Elevation and temperature profile" if has_weather else "Elevation profile", className='ao-label'),
-                      gradient_scale_legend()],
+            html.Div([segmented('profile-view', [{'label': "Elevation and temperature" if has_weather else "Elevation", 'value': 'elevation'},
+                                                 {'label': "Power decomposition", 'value': 'power'}], 'elevation'),
+                      html.Div([html.Div(gradient_scale_legend(), id='gradient-legend', className='ao-legend-slot'),
+                                html.Div(power_legend([*power_grid['sinks'], 'Drivetrain']), id='power-legend',
+                                         className='ao-legend-slot ao-invisible')],
+                               className='ao-legend-stack')],  # Both legends take the same space: the plot does not move on switching
                      style={'display': 'flex', 'justifyContent': 'space-between', 'gap': '12px', 'flexWrap': 'wrap', 'alignItems': 'center'}),
-            dcc.Graph(id='route-profile', figure=plot_interactive.profile_figure(args, data, summits, theme=theme), config={'displaylogo': False}),
+            html.Div(dcc.Graph(id='route-profile', figure=plot_interactive.profile_figure(args, data, summits, theme=theme),
+                               config={'displaylogo': False}), id='elevation-view'),
+            html.Div([dcc.Graph(id='route-power', figure=plot_interactive.rider_power_figure(args, data, power_grid, summits, theme=theme),
+                                config={'displaylogo': False}),
+                      html.Div("Where your power goes: the power you pedal, split by what it overcomes. Downhill stretches without "
+                               "pedalling stay empty.", className='ao-hint')],
+                     id='power-view', hidden=True),
             html.Div(f"Select a stretch to zoom in, double click to zoom out. Data: {sources}", className='ao-hint'),
         ], className='ao-card-body', style={'borderTop': '1px solid var(--ao-line)'}),
         dcc.Store(id='map-color-options', data=options),
@@ -602,12 +641,10 @@ def results_layout(key, args, data, settings, theme='light'):
     folder = WORK_DIR / key
     def download_button(fmt):
         if fmt == "TCX":  # Written with the analysis; GPX and FIT are converted from it on the first click
-            path = folder / 'route.tcx'
-            size = path.stat().st_size if path.exists() else 0
-            text, available = (f"{size / 1e6:.1f} MB" if size > 1e6 else f"{size / 1e3:.0f} kB"), bool(size)
+            available = (folder / 'route.tcx').exists()
         else:
             available = GPSBABEL_AVAILABLE
-            text = "converted on download" if available else "needs gpsbabel 1.10 or newer"
+        text = DOWNLOAD_TARGETS[fmt] if available or fmt == "TCX" else "needs gpsbabel 1.10 or newer"
         return html.Button([html.B(fmt), html.Span(text)], id=f'download-{fmt.lower()}-button', className='ao-dl',
                            disabled=not available, n_clicks=0)
 
@@ -627,6 +664,10 @@ def results_layout(key, args, data, settings, theme='light'):
           if has_weather else []),
         card("Take it to your head unit", [
             html.Div([download_button("TCX"), download_button("FIT"), download_button("GPX")], className='ao-downloads'),
+            html.Div(["Connect your head unit by USB and copy the file into the folder shown. Not every device accepts every format: "
+                      "if the route doesn't show up, check your device's manual.", html.Br(),
+                      "On selected Garmin devices, the Virtual Partner shows whether you're ahead or behind schedule (TCX and FIT only)."],
+                     className='ao-hint', style={'marginTop': '10px'}),
             html.Div(id='download-message'),
         ], hint=cue_contents(track)),
     ], className='ao-results')
@@ -636,19 +677,19 @@ def start_page():
     return html.Div([
         html.Section([
             html.Div([
-                html.Div("Physics model · open elevation & weather data", className='ao-label'),
-                html.H1("How long will your ride really take?"),
-                html.P("Load a route, set your power and position, and AerOracle estimates the riding time from elevation, wind, "
-                       "temperature and air density along every metre."),
+                html.Div("Cycling power model · high-resolution terrain · weather forecast", className='ao-label'),
+                html.H1("How long will your ride take?"),
+                html.P("From your power, weight, CdA and Crr, AerOracle computes your speed along the route, accounting for "
+                       "gradient, cornering, momentum and the weather at the time you pass each point."),
                 html.Div([dbc.Button("Try a sample route", id='try-sample', color='primary'),
-                          html.A("Load your route", href='#setup', className='btn btn-outline-primary')], className='ao-cta'),
+                          html.A("Load your route", href='#setup', className='btn btn-outline-primary ao-only-stacked')], className='ao-cta'),
             ], className='ao-hero-text'),
             html.Div(html.Img(src=EXAMPLE_PROFILE, alt="Elevation profile of the sample route") if EXAMPLE_PROFILE else None, className='ao-hero-art'),
         ], className='ao-hero'),
         html.Div([
-            html.Div([html.H3("Wind along the route"), html.P("Forecast every 10 minutes of riding time (less often on very long rides), projected onto your direction of travel.")], className='ao-feature'),
-            html.Div([html.H3("Precise elevation"), html.P("swissALTI3D and LiDAR where available, Copernicus worldwide; elevation of tunnels and bridges corrected.")], className='ao-feature'),
-            html.Div([html.H3("Ready for your head unit"), html.P("TCX, GPX and FIT courses with climbs and turns as cues.")], className='ao-feature'),
+            html.Div([html.H3("Wind along the route"), html.P("Forecast up to every 10 minutes of riding time, projected onto your direction of travel.")], className='ao-feature'),
+            html.Div([html.H3("High-quality elevation data"), html.P("Worldwide, high-resolution terrain models, corrected for tunnels and bridges.")], className='ao-feature'),
+            html.Div([html.H3("Ready for your head unit"), html.P("TCX, GPX and FIT courses with climbs and turns as cues, and your predicted pace for the Virtual Partner.")], className='ao-feature'),
         ], className='ao-features'),
     ], className='ao-start')
 
@@ -1094,6 +1135,12 @@ dash.clientside_callback(
     dash.ClientsideFunction(namespace='aeroracle', function_name='hoverSync'),
     Output('hover-sync-dummy', 'data'),
     Input('route-map', 'figure'), Input('route-profile', 'figure'),
+)
+
+dash.clientside_callback(  # Lower plot of the route card: elevation profile or rider power, in the browser
+    dash.ClientsideFunction(namespace='aeroracle', function_name='switchProfile'),
+    Output('elevation-view', 'hidden'), Output('power-view', 'hidden'), Output('gradient-legend', 'className'), Output('power-legend', 'className'),
+    Input('profile-view', 'value'),
 )
 
 

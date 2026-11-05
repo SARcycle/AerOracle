@@ -357,13 +357,25 @@ def map_figure(parameters, assets, options, selected, summits=(), theme='light')
     return fig
 
 
+def elevation_range(elevation):
+    """Elevation axis [m] of the lower plots (profile and power decomposition): same range, so switching is seamless."""
+    return np.floor((np.nanmin(elevation) - 100) / 250) * 250, np.ceil((np.nanmax(elevation) + 150) / 250) * 250
+
+
+LOWER_PLOT_RIGHT_MARGIN = 52  # [px] Right axis of the lower plots (temperature or power): fixed, so both plots are equally wide
+
+
+def lower_plot_top_margin(summits, total_km, floor, top):
+    """Top margin [px] of the lower plots: room for the summit labels of the profile."""
+    return 24 + max([0, *(shift - 11 for shift in summit_label_shifts(summits, total_km, floor, top))])
+
+
 def profile_figure(parameters, assets, summits=(), theme='light'):
     """Elevation profile filled by gradient band (up and down), with the temperature on the right axis (with weather)."""
     d = route_data(parameters, assets)
     colors = THEMES[theme]
     km, elevation, gradient = d['distance_km'], d['elevation'], d['gradient']
-    floor = np.floor((np.nanmin(elevation) - 100) / 250) * 250
-    top = np.ceil((np.nanmax(elevation) + 150) / 250) * 250
+    floor, top = elevation_range(elevation)
 
     fig = make_subplots(specs=[[{"secondary_y": d['weather']}]])
 
@@ -405,16 +417,18 @@ def profile_figure(parameters, assets, summits=(), theme='light'):
         t_min, t_max = np.nanmin(d['temperature']), np.nanmax(d['temperature'])
         span = max(t_max - t_min, 4)
         fig.update_yaxes(title_text="Temperature [°C]", showgrid=False, secondary_y=True, range=[t_min - span * 0.15, t_max + span * 0.35],
+                         automargin=False,  # Within LOWER_PLOT_RIGHT_MARGIN
                          dtick=5 if span > 8 else 2, tickformat='.0f', title_font=dict(color=TEMPERATURE_COLOR), tickfont=dict(color=TEMPERATURE_COLOR))
 
     label_shifts = summit_label_shifts(summits, km[-1], floor, top)
     fig.update_yaxes(title_text="Elevation [m]", range=[floor, top], gridcolor=colors['grid'], zeroline=False, secondary_y=False)
     fig.update_xaxes(title_text="Distance [km]", showgrid=False, range=[km[0], km[-1]],
+                     domain=[0, 1],  # make_subplots shrinks it for the right axis; the right margin holds it (as in the power plot)
                      unifiedhovertitle=dict(text='Distance: %{x:.1f} km'))  # Title line of the hover box
     fig.update_layout(
         height=320,
         # No side margins: the axes reserve exactly the space their numbers and titles need (automargin)
-        margin=dict(l=0, r=0, t=24 + max([0, *(shift - 11 for shift in label_shifts)]), b=50),
+        margin=dict(l=0, r=LOWER_PLOT_RIGHT_MARGIN, t=lower_plot_top_margin(summits, km[-1], floor, top), b=50),
         paper_bgcolor=TRANSPARENT,
         plot_bgcolor=TRANSPARENT,
         font=dict(color=colors['font']),
@@ -432,6 +446,60 @@ def profile_figure(parameters, assets, summits=(), theme='light'):
                           xanchor='right' if s['top_km'] > 0.95 * km[-1] else 'left' if s['top_km'] < 0.05 * km[-1] else 'center',
                           bgcolor=colors['label_bg'], borderpad=2, font=dict(size=11, color=colors['line']))
                      for s, shift in zip(summits, label_shifts)],
+    )
+    return fig
+
+
+# Rider power figure: sinks of speedcalculation.rider_power_grid plus the drivetrain, readable in light and dark mode
+POWER_SINK_COLORS = {'Air': '#4c78a8', 'Head wind': '#72b7b2', 'Rolling': '#9d7660', 'Climbing': '#54a24b',
+                     'Accelerating': '#b279a2', 'Drivetrain': '#8a8984'}
+
+
+def rider_power_figure(parameters, assets, grid, summits=(), theme='light'):
+    """
+    Where the rider's power goes along the route as stacked areas (right axis), with the elevation as a thin line on the
+    left axis, in the range, grid and margins of the elevation profile, so switching between the two is seamless.
+    The areas are filled in the browser from grid (speedcalculation.rider_power_grid, in layout.meta), grouped to the
+    zoom level (dash_assets/hover_sync.js). The elevation trace (last) carries [lat, lon] like the profile (map cursor).
+    The elevation axis overlays the power axis, as an overlaying axis is drawn on top: the line stays above the areas.
+    """
+    d = route_data(parameters, assets)
+    colors = THEMES[theme]
+    km, elevation = d['distance_km'], d['elevation']
+    floor, top = elevation_range(elevation)
+    names = [*grid['sinks'], 'Drivetrain']
+    fig = go.Figure()
+    for name in names:
+        fig.add_trace(go.Scatter(
+            x=[], y=[], mode='lines', stackgroup='rider', line=dict(width=0, color=POWER_SINK_COLORS[name]),
+            fillcolor=POWER_SINK_COLORS[name], name=name, yaxis='y',
+            hovertemplate=f"{name}: %{{y:.0f}} W (%{{customdata:.0f}}%)<extra></extra>",  # customdata: share of the bin [%]
+        ))
+    fig.add_trace(go.Scatter(
+        x=km, y=elevation, mode='lines', line=dict(color=colors['line'], width=1.4), opacity=0.45, name='Elevation', yaxis='y2',
+        customdata=np.column_stack([d['lats'], d['lons']]), hovertemplate='Elevation: %{y:.0f} m<extra></extra>', showlegend=False,
+    ))
+    power_top = max(parameters.power.flat, parameters.power.uphill, parameters.power.downhill, 50)  # At most the set power
+    fig.update_layout(
+        xaxis=dict(title_text="Distance [km]", showgrid=False, zeroline=False, range=[km[0], km[-1]],  # Zero line: white in the template
+                   unifiedhovertitle=dict(text='Distance: %{x:.1f} km')),
+        yaxis=dict(title_text="Rider power [W]", side='right', range=[0, power_top * 1.08], showgrid=False, zeroline=False,
+                   automargin=False),  # Within LOWER_PLOT_RIGHT_MARGIN
+        yaxis2=dict(title_text="Elevation [m]", side='left', overlaying='y', range=[floor, top], gridcolor=colors['grid'],
+                    zeroline=False, tickmode='auto'),  # Own ticks as in the profile (overlaying axes sync to the other by default)
+        height=320,
+        margin=dict(l=0, r=LOWER_PLOT_RIGHT_MARGIN, t=lower_plot_top_margin(summits, km[-1], floor, top), b=50),
+        paper_bgcolor=TRANSPARENT,
+        plot_bgcolor=TRANSPARENT,
+        font=dict(color=colors['font']),
+        showlegend=False,  # Legend in the head of the plot (app.power_legend)
+        hovermode='x unified',
+        hoverlabel=dict(bgcolor=colors['label_bg'], bordercolor=colors['label_border'], font=dict(color=colors['line'])),
+        shapes=[dict(  # Cursor, moved by hover_sync.js
+            type='line', xref='x', yref='paper', x0=0, x1=0, y0=0, y1=1,
+            line=dict(color=CURSOR_COLOR, width=2), visible=False
+        )],
+        meta=dict(riderPower=dict(grid, names=names)),
     )
     return fig
 

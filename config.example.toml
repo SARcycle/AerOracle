@@ -1,7 +1,8 @@
 # Copy to config.toml and adapt. Every value can also be set by an environment variable
 # (AERORACLE_DATA_DIR, AERORACLE_TEMP_DIR, AERORACLE_INPUT_DIR, AERORACLE_PUBLISH_DIR, AERORACLE_PUBLISH_URL,
 # AERORACLE_SOURCE_URL, AERORACLE_WHATIF_PCT, AERORACLE_WIND_SHEAR_EXPONENT, AERORACLE_MAX_FORECAST_LOCATIONS,
-# AERORACLE_CORNERING, AERORACLE_MAX_PEDALLING_SPEED_KMH, AERORACLE_MAX_SPEED_KMH).
+# AERORACLE_CORNERING, AERORACLE_MAX_PEDALLING_SPEED_KMH, AERORACLE_MAX_SPEED_KMH, AERORACLE_DEFAULT_POWER,
+# AERORACLE_DEFAULT_CDA, AERORACLE_DEFAULT_WEIGHT, AERORACLE_DEFAULT_CRR; lists there comma-separated, e.g. "0.35,0.40,0.29").
 
 # Folder that contains GeoData/ (DEM/, OSM/, Gravimetry/)
 data_dir = "/data"
@@ -45,3 +46,11 @@ data_dir = "/data"
 
 # Top speed, speeds above are clipped to this value
 # max_speed_kmh = 80
+
+# Rider values the web app's form starts with, also used by main.py when not given on the command line.
+# Power [W] and CdA [m²] for flat, uphill and downhill (uphill: gradient >= 5%, downhill: <= -5%)
+# default_power = [205, 225, 0]
+# default_cda = [0.35, 0.40, 0.29]
+# System weight (bike, accessories and rider) [kg] and rolling resistance coefficient
+# default_weight = 82
+# default_crr = 0.0035

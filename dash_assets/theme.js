@@ -1,6 +1,6 @@
 // Light/dark mode following the system setting (prefers-color-scheme), also when it changes while the page is open:
 // - page: Bootstrap 5.3 color modes (data-bs-theme on <html>)
-// - figures: colors of the route map and the elevation profile (see plot_interactive.py)
+// - figures: colors of the route map, the elevation profile and the rider power (see plot_interactive.py)
 
 (function () {
     const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -39,6 +39,12 @@
             });
             Plotly.relayout(profileDiv, update);
             Plotly.restyle(profileDiv, {'line.color': theme.line}, [PROFILE_ELEVATION_TRACE]);
+        }
+        const powerDiv = plotlyDiv('route-power');
+        if (powerDiv && powerDiv.layout && powerDiv.layout.font && powerDiv.layout.font.color !== theme.font) {
+            Plotly.relayout(powerDiv, {'font.color': theme.font, 'yaxis2.gridcolor': theme.grid, 'hoverlabel.bgcolor': theme.labelBg,
+                                       'hoverlabel.bordercolor': theme.labelBorder, 'hoverlabel.font.color': theme.line});
+            Plotly.restyle(powerDiv, {'line.color': theme.line}, [powerDiv.data.length - 1]);  // Elevation line (last trace), as in the profile
         }
     };
 

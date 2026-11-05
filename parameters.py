@@ -43,17 +43,19 @@ class Parameters:
         parse = argparse.ArgumentParser(
             description="Program for cycling aerodynamics calculations and ride time estimations")
         parse.add_argument('-i', '--input', type=str, help='Input file', default=None)
-        parse.add_argument('-p', '--power', nargs='+', type=int, help='Average Power [W] [Flat, Uphill, Downhill]; Default: [210, 231, 0]', default=None)
-        parse.add_argument('-w', '--weight', type=float, help='System weight (rider + bike) [kg]; Default: 82',
-                           default=None)
+        parse.add_argument('-p', '--power', nargs='+', type=int, default=None,
+                           help=f'Average Power [W] [Flat, Uphill, Downhill]; Default: default_power in config.toml {list(config.DEFAULT_POWER)}')
+        parse.add_argument('-w', '--weight', type=float, default=None,
+                           help=f'System weight (rider + bike) [kg]; Default: default_weight in config.toml ({config.DEFAULT_WEIGHT:g})')
         parse.add_argument('-t', '--time', type=str, help='Start time of the ride, local time at the route start [yyyymmddHHMMSS]', default=None)
         parse.add_argument('-q', '--quiet', action='store_true', help='Suppress output')
         parse.add_argument('-o', '--output', type=str, help='Output file name', default=None)
         parse.add_argument('-u', '--url', type=str, help='URL', default=None)
         parse.add_argument('-b', '--tt', action='store_true', help='Time trial bike')
-        parse.add_argument('-r', '--crr', type=float, help='Rolling resistance coefficient', default=None)
-        parse.add_argument('-c', '--cda', nargs='+', type=float,
-                           help='Coefficient of drag (CdA) [Flat, Uphill, Downhill]', default=None)
+        parse.add_argument('-r', '--crr', type=float, default=None,
+                           help=f'Rolling resistance coefficient; Default: default_crr in config.toml ({config.DEFAULT_CRR:g})')
+        parse.add_argument('-c', '--cda', nargs='+', type=float, default=None,
+                           help=f'Coefficient of drag (CdA) [Flat, Uphill, Downhill]; Default: default_cda in config.toml {list(config.DEFAULT_CDA)}')
         parse.add_argument('-m', '--powerfactor', type=float, help='Factor for uphill power (gradient >= --gradient)',
                            default=None)
         parse.add_argument('-g', '--gradient', type=float, help='Gradient threshold for uphill/downhill power and CdA [-] (uphill: >= +value, downhill: <= -value); Default: 0.05 (= 5%%)',
@@ -99,7 +101,7 @@ class Parameters:
         if self.powerfactor is None:
             self.powerfactor = 1.1
         if self.power is None:
-            self.power = [210, 210*self.powerfactor, 1]
+            self.power = [*config.DEFAULT_POWER[:2], max(.1, config.DEFAULT_POWER[2])]  # Downhill power not zero (as below)
             print(f'- No power provided. Defaulting to {self.power[0]}/{self.power[1]}/{self.power[2]} W.')
         elif len(self.power) == 1:
             self.power = [self.power[0], self.power[0]*self.powerfactor, .1]
@@ -108,8 +110,8 @@ class Parameters:
         elif len(self.power) == 2:
             self.power.append(.1)  # Making sure that downhill power is not set to zero
         if self.weight is None:
-            self.weight = 82
-            print('- No weight provided. Defaulting to 82 kg.')
+            self.weight = config.DEFAULT_WEIGHT
+            print(f'- No weight provided. Defaulting to {self.weight:g} kg.')
         if self.time is None:
             self.time = False
         else:
@@ -131,7 +133,7 @@ class Parameters:
                 if self.cda is not None and len(self.cda) == 1:
                     self.cda = self.cda*3
                 else:
-                    self.cda = [0.35, 0.40, 0.29]
+                    self.cda = list(config.DEFAULT_CDA)
             elif len(self.cda) == 3:
                 pass
         elif self.tt:
@@ -143,7 +145,7 @@ class Parameters:
             elif len(self.cda) == 3:
                 pass
         if self.crr is None:
-            self.crr = 0.0035
+            self.crr = config.DEFAULT_CRR
         self.power = PerGradient(*self.power)
         self.cda = PerGradient(*self.cda)
         self.weather = WeatherProvider(self.weather)

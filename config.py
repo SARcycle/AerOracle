@@ -14,6 +14,10 @@ Read from config.toml next to this file (see config.example.toml), each value ov
     cornering    AERORACLE_CORNERING    Default rider level in corners: cautious, average, confident or racer (default average)
     max_pedalling_speed_kmh  AERORACLE_MAX_PEDALLING_SPEED_KMH  Speed above which riders stop pedalling (default 65)
     max_speed_kmh  AERORACLE_MAX_SPEED_KMH  Top speed, e.g. on descents (default 80)
+    default_power   AERORACLE_DEFAULT_POWER   Rider defaults of the web app and main.py: power [W] flat, uphill, downhill
+    default_cda     AERORACLE_DEFAULT_CDA     ... CdA [m²] flat, uphill, downhill (environment: comma-separated, e.g. "0.35,0.40,0.29")
+    default_weight  AERORACLE_DEFAULT_WEIGHT  ... system weight [kg]
+    default_crr     AERORACLE_DEFAULT_CRR     ... rolling resistance coefficient
 """
 import os
 import tempfile
@@ -35,6 +39,10 @@ _DEFAULTS = {
     'cornering': 'average',
     'max_pedalling_speed_kmh': 65.0,
     'max_speed_kmh': 80.0,
+    'default_power': [205, 225, 0],
+    'default_cda': [0.35, 0.40, 0.29],
+    'default_weight': 82.0,
+    'default_crr': 0.0035,
 }
 
 
@@ -63,3 +71,17 @@ MAX_FORECAST_LOCATIONS: int = max(2, int(_settings['max_forecast_locations']))
 CORNERING: str = _settings['cornering']
 MAX_PEDALLING_SPEED_KMH: float = float(_settings['max_pedalling_speed_kmh'])
 MAX_SPEED_KMH: float = float(_settings['max_speed_kmh'])
+
+
+def _per_gradient(value) -> tuple:
+    """Flat, uphill, downhill from a list (config.toml) or a comma-separated string (environment); whole numbers as int."""
+    values = [float(v) for v in (value.split(',') if isinstance(value, str) else value)]
+    if len(values) != 3:
+        raise ValueError(f'Expected three values (flat, uphill, downhill), got {value!r}')
+    return tuple(int(v) if v.is_integer() else v for v in values)
+
+
+DEFAULT_POWER: tuple = _per_gradient(_settings['default_power'])
+DEFAULT_CDA: tuple = _per_gradient(_settings['default_cda'])
+DEFAULT_WEIGHT: float = float(_settings['default_weight'])
+DEFAULT_CRR: float = float(_settings['default_crr'])
