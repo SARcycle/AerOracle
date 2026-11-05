@@ -205,7 +205,8 @@ def cornered_speeds(parameters, track, steady, with_weather, with_pedalling=Fals
     carries momentum into short climbs). No pedalling above the pedal strike lean angle or the cadence limit.
     With weather, roads are wet where the precipitation reaches WET_ROAD_MM_PER_H: less grip and more caution.
     Braking and cornering share the tyre grip (friction circle): where the bike corners hard, less braking is left.
-    with_pedalling: also return whether the rider pedals on the way to each point (bool array).
+    with_pedalling: also return whether the rider pedals on the way to each point (bool array): not above the cadence
+    limit, at the pedal strike lean angle or while braking for a corner.
     """
     level_lateral_g, level_braking_g = CORNERING[parameters.cornering]
     gravity = track['gravity_ms2']
@@ -238,13 +239,13 @@ def cornered_speeds(parameters, track, steady, with_weather, with_pedalling=Fals
     for i in range(1, len(limit)):
         v = speed[-1]
         pedalling = v < pedalling_limit and v * v <= pedal_strike[i]
-        pedalling_at.append(pedalling)
         air = v + headwind[i]
         force = (power[i] / max(v, 1.0) if pedalling else 0.0) - drag[i] * air * abs(air) - resistance[i]
         acceleration = min(force / inertial_mass, max_acceleration[i])
         reached = max(v * v + 2 * acceleration * step[i], 0.0) ** 0.5
         # Towards the steady speed: accelerating up to it, decelerating (momentum on climbs) down to it
         reached = min(reached, steady[i]) if acceleration >= 0 else max(reached, steady[i])
+        pedalling_at.append(pedalling and reached <= limit[i])  # Braking for the corner: no pedalling
         speed.append(min(reached, limit[i]))
     if with_pedalling:
         return np.array(speed), np.array(pedalling_at)
@@ -312,8 +313,8 @@ def rider_power_grid(parameters, track) -> dict:
     bins to the zoom level and splits the rider's energy over the sinks (dash_assets/hover_sync.js, renderRiderPower):
     sums of bins are exact for any grouping, so the split is calculated in one place only.
     Per step [J], > 0 = taken from the bike: still-air drag, extra drag by head wind (< 0: tail wind), rolling, gravity
-    and kinetic energy (both signed); the rider's energy at the wheel where the model pedals (track 'pedalling'), at most
-    the set power; and the riding time [s].
+    and kinetic energy (both signed); the rider's energy at the wheel: the set power where the model pedals (track
+    'pedalling'), as the model applies it; and the riding time [s].
     """
     with_weather = track.has('headwind_ms')
     drag, _, headwind = resistance_terms(parameters, track, with_weather)
@@ -335,8 +336,8 @@ def rider_power_grid(parameters, track) -> dict:
     if not with_weather:
         del energy['Head wind']
     pedalling = track['pedalling'] if track.has('pedalling') else np.ones(len(speed), dtype=bool)
-    available = per_gradient(track['gradient'], parameters.power, parameters.gradient_threshold) * DRIVETRAIN_EFFICIENCY * duration
-    rider = np.where(pedalling, np.clip(sum(energy.values()), 0, available), 0)
+    set_power = per_gradient(track['gradient'], parameters.power, parameters.gradient_threshold)
+    rider = np.where(pedalling, set_power * DRIVETRAIN_EFFICIENCY * duration, 0)
 
     bin_m = max(POWER_GRID_STEP_M, (distance[-1] - distance[0]) / POWER_GRID_MAX_BINS)
     count = max(int(np.ceil((distance[-1] - distance[0]) / bin_m)), 1)

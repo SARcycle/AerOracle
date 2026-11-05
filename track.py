@@ -29,7 +29,7 @@ POINT_COLUMNS = {
     # 'delta_elevation_m'             # Elevation change to previous point [m]       (speedcalculation)
     # 'gradient'                      # Smoothed gradient [-] (0.05 = 5%)            (speedcalculation)
     # 'speed_ms'                      # Estimated speed [m/s]                        (speedcalculation)
-    # 'pedalling'                     # True if the rider pedals on the way to the point (speedcalculation)
+    # 'pedalling'                     # True if the rider pedals on the way to the point, not braking (speedcalculation)
     # 'temperature_c'                 # Air temperature [°C]                         (weather)
     # 'wind_direction_deg'            # Wind direction (where it blows from) [°]     (weather)
     # 'wind_speed_ms'                 # Wind speed at rider height [m/s]             (weather)
