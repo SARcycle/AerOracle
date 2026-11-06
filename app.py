@@ -117,8 +117,8 @@ def svg_data_uri(svg):
 
 
 LOGO = svg_data_uri(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 34 34"><g fill="none" stroke="#fff" stroke-linecap="round">'
-    '<circle cx="17" cy="17" r="14" stroke-width="2.5"/><path d="M3 13h9M1 18h11M3 23h9" stroke-width="2.2" opacity=".7"/></g>'
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4.5 -1.75 37.5 37.5"><g fill="none" stroke="#fff" stroke-linecap="round">'
+    '<circle cx="17" cy="17" r="14" stroke-width="2.5"/><path d="M0 12h12M-2 17h14M0 22h12" stroke-width="2.2" opacity=".7"/></g>'
     '<circle cx="17" cy="17" r="2.5" fill="#fff"/></svg>')
 
 

@@ -59,11 +59,16 @@ h1, h2, h3, h4 { font-family: var(--ao-font-display); font-weight: 600; letter-s
 /* Header */
 .ao-topbar { position: sticky; top: 0; z-index: 1020; background: #1d4f91; color: #ffffff; }  /* Road-sign blue in both themes */
 .ao-topbar-inner { display: flex; align-items: center; gap: 20px; padding: 10px 16px; max-width: 1440px; margin: 0 auto; flex-wrap: wrap; }
-.ao-brand { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
+.ao-brand { display: flex; align-items: baseline; gap: 10px; color: inherit; text-decoration: none; }  /* Name and tagline on one baseline */
 .ao-brand:hover { color: inherit; }
-.ao-brand img { width: 34px; height: 34px; }
+.ao-brand img { width: 34px; height: 34px; align-self: center; }
 .ao-brand-name { font-family: var(--ao-font-display); font-weight: 700; font-size: 26px; letter-spacing: .02em; }
 .ao-brand-tag { font-size: 13px; opacity: .8; }
+@media (max-width: 600px) {  /* Phones: tagline below the name, the logo beside both */
+    .ao-brand { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; row-gap: 0; align-items: center; }
+    .ao-brand img { grid-row: span 2; }
+    .ao-brand-name { line-height: 1.1; }
+}
 .ao-topnav { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
 .ao-topnav .btn { color: inherit; font-size: 14px; text-decoration: none; padding: 6px 10px; }
 .ao-topnav .btn:hover { background: rgba(127, 127, 127, .2); color: inherit; }
