@@ -17,7 +17,7 @@ import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlparse
 
 import dash
 import dash_bootstrap_components as dbc
@@ -78,6 +78,9 @@ weather conditions along a cycling route.
 2. **Set the rider parameters:** power (in the flat, uphill, downhill), weight, drag area (CdA) and rolling resistance (Crr or Prr)
 3. **Choose the options:** automatic climb detection and the weather forecast for a start date and time
 4. **Click "Analyze route"**
+
+Your settings can be kept as a link: "Save/share settings" below the button creates one with the parts you choose. Opening the
+link fills them in again; nothing is stored in your browser or on the server.
 
 ### Scientific Basis
 Martin, J. C., Milliken, D. L., Cobb, J. E., McFadden, K. L., & Coggan, A. R. (1998). Validation of a Mathematical Model for Road Cycling Power. Journal of Applied Biomechanics, 14(3), 276-291. [https://doi.org/10.1123/jab.14.3.276](https://doi.org/10.1123/jab.14.3.276)
@@ -728,6 +731,7 @@ def step(number_, title, children):
 def rail():
     today = date.today()
     return html.Aside([
+        html.Div(id='link-status'),
         step("1", "Route", [
             segmented('input-method', ["Upload file", "RideWithGPS link"], "Upload file"),
             html.Div(id='upload-section', children=[
@@ -780,7 +784,93 @@ def rail():
             html.Div("Up to 7 days ahead, or a past date", className='ao-hint'),
         ]),
         dbc.Button("Analyze route", id='analyze', color='primary', className='ao-analyze'),
+        share_section(),
     ], className='ao-rail', id='setup', **{'aria-label': 'Setup'})
+
+
+# --- Settings link ---
+# The chosen settings as query parameters (built in the browser, see the clientside callback "Settings link"), e.g.
+# ?power=205,240,180&cda=0.32,0.3,0.34&weight=78&crr=0.004&corner=average. Opening such a link fills in the setup;
+# nothing is stored in the browser or on the server, and the analysis is not started.
+
+SHARE_GROUPS = [('rider', "Rider: power, CdA, weight, rolling resistance, cornering"),
+                ('options', "Options: climbs, weather, terrain shadow"),
+                ('time', "Start time"), ('date', "Start date"),
+                ('route', "Route: RideWithGPS link, course name")]
+LINK_DISCLAIMER = ("The link contains these values in plain text: anyone who has it can see them, and like any web address "
+                   "it may appear in server logs.")
+
+
+def share_section():
+    return html.Div([
+        html.Button("Save/share settings", id='share-toggle', className='ao-link', n_clicks=0),
+        dbc.Collapse(id='share-panel', is_open=False, children=html.Div([
+            html.Span("Include", className='ao-label'),
+            dbc.Checklist(id='share-groups', value=['rider'], options=[{'label': label, 'value': value} for value, label in SHARE_GROUPS]),
+            html.Div([dbc.Input(id='share-link', readonly=True, size='sm', name='settings-link'),
+                      dcc.Clipboard(target_id='share-link', className='ao-copy', title="Copy link")], className='ao-share-row'),
+            html.Div(id='share-warning', className='ao-error'),
+            html.Div("Bookmark the link to keep these settings, or send it to share them.", className='ao-hint'),
+            html.Div(LINK_DISCLAIMER, className='ao-hint'),
+        ], className='ao-share')),
+    ], className='ao-share-wrap')
+
+
+def link_number(text, count, low, high):
+    """count comma-separated numbers within [low, high] (whole numbers as int), or None."""
+    try:
+        values = [float(part) for part in text.split(',')]
+    except ValueError:
+        return None
+    if len(values) != count or not all(low <= value <= high for value in values):
+        return None
+    values = [int(value) if value == int(value) else value for value in values]
+    return values if count > 1 else values[0]
+
+
+def parse_settings_link(search):
+    """Settings from the query string of a settings link: ({rail field: value}, [ignored parameters])."""
+    query = {key: values[0].strip() for key, values in parse_qs((search or '').lstrip('?')).items()}
+    values, ignored = {}, []
+
+    def take(key, value):
+        if value is None:
+            ignored.append(key)
+        return value
+
+    if 'power' in query and (power := take('power', link_number(query['power'], 3, 0, 3000))):
+        values.update({'power-flat': power[0], 'power-up': power[1], 'power-down': power[2]})
+    if 'cda' in query and (cda := take('cda', link_number(query['cda'], 3, 0, 1))):
+        values.update({'cda-flat': cda[0], 'cda-up': cda[1], 'cda-down': cda[2]})
+    if 'weight' in query and (weight := take('weight', link_number(query['weight'], 1, 1, 200))):
+        values['weight'] = weight
+    if 'prr' in query and (prr := take('prr', link_number(query['prr'], 1, 0, 300))) is not None:
+        values['prr'] = prr
+    elif 'crr' in query and (crr := take('crr', link_number(query['crr'], 1, 0, 0.1))) is not None:
+        values['crr'] = crr
+    if 'corner' in query and take('corner', query['corner'] if query['corner'] in CORNERING_LEVELS else None):
+        values['cornering'] = query['corner']
+    for key, field_id in (('climbs', 'climbs'), ('weather', 'weather-on'), ('shadow', 'terrain-shadow')):
+        if key in query and take(key, query[key] if query[key] in ('0', '1') else None):
+            values[field_id] = query[key] == '1'
+    if 'time' in query and (start_time := take('time', parse_time(query['time']))):
+        values['start-time'] = start_time.strftime('%H:%M')
+    if 'date' in query:
+        try:
+            start_date = date.fromisoformat(query['date'])
+        except ValueError:
+            start_date = None
+        if take('date', start_date if start_date and date(2000, 1, 1) <= start_date <= date.today() + timedelta(days=7) else None):
+            values['start-date'] = start_date.isoformat()
+    if ('start-time' in values or 'start-date' in values) and 'weather-on' not in values:
+        values['weather-on'] = True  # A start time is only of use with the weather forecast
+    route = urlparse(query.get('route', ''))
+    if 'route' in query and take('route', query['route'] if route.scheme in ('https', 'http') and route.hostname in ('ridewithgps.com', 'www.ridewithgps.com')
+                                 and RWGPS_URL.search(query['route']) else None):
+        values.update({'input-method': "RideWithGPS link", 'url': query['route']})
+    if 'name' in query and take('name', query['name'][:tcx_writer.MAX_COURSE_NAME_LEN] or None):
+        values.update({'course-rename': True, 'course-name': query['name'][:tcx_writer.MAX_COURSE_NAME_LEN]})
+    return values, ignored
 
 
 def header():
@@ -829,6 +919,7 @@ def serve_layout():
         dcc.Store(id='hover-sync-dummy'),
         dcc.Store(id='map-color-dummy'),
         dcc.Download(id='download'),
+        dcc.Location(id='location', refresh=False),  # Settings link: its query string
     ])
 
 
@@ -1104,6 +1195,79 @@ def download(tcx_clicks, gpx_clicks, fit_clicks, key):
     return dcc.send_file(str(path), filename=f'{name}{suffix}'), None
 
 
+LINK_FIELDS = ['power-flat', 'power-up', 'power-down', 'cda-flat', 'cda-up', 'cda-down', 'weight', 'cornering', 'climbs', 'weather-on',
+               'terrain-shadow', 'start-time', 'start-date', 'input-method', 'url', 'course-rename', 'course-name']
+
+
+@app.callback(
+    *[Output(field_id, 'date' if field_id == 'start-date' else 'value', allow_duplicate=True) for field_id in LINK_FIELDS],
+    Output('rr-type', 'value', allow_duplicate=True), Output('rr-value', 'value', allow_duplicate=True), Output('link-status', 'children'),
+    Input('location', 'search'),
+    prevent_initial_call='initial_duplicate',
+)
+def load_settings_link(search):
+    """Fill in the setup from a settings link (once, at page load). The analysis is not started."""
+    values, ignored = parse_settings_link(search)
+    if not values and not ignored:
+        return (dash.no_update,) * (len(LINK_FIELDS) + 3)
+    if 'prr' in values:
+        # Switching to Prr converts the field's value from Crr (convert_rolling_resistance): pass the Crr equivalent
+        rr_type, rr_value = "Prr", values['prr'] / PRR_PER_CRR
+    else:
+        rr_type, rr_value = dash.no_update, values.get('crr', dash.no_update)  # The page starts with Crr
+    status = [html.B("Settings loaded from the link"),
+              html.Span("Check them, then analyze." + (f" Ignored (invalid): {', '.join(ignored)}." if ignored else ""))]
+    return (*[values.get(field_id, dash.no_update) for field_id in LINK_FIELDS], rr_type, rr_value,
+            html.Div(status, className='ao-linknote'))
+
+
+dash.clientside_callback(  # Save or share settings: open or close the panel
+    "function (nClicks, isOpen) { return !isOpen; }",
+    Output('share-panel', 'is_open'), Input('share-toggle', 'n_clicks'), State('share-panel', 'is_open'),
+    prevent_initial_call=True,
+)
+
+dash.clientside_callback(  # Settings link: the chosen groups as query parameters, in the browser
+    r"""
+    function (groups, method, pf, pu, pd, cf, cu, cd, weight, rrType, rr, corner, climbs, weatherOn, shadow, time, date, url, rename, name) {
+        groups = groups || [];
+        const params = new URLSearchParams();
+        const given = (v) => v !== null && v !== undefined && String(v).trim() !== '';
+        const set = (key, value) => { if (given(value)) params.set(key, String(value).trim()); };
+        const list = (...values) => values.every(given) ? values.join(',') : null;
+        if (groups.includes('rider')) {
+            set('power', list(pf, pu, pd)); set('cda', list(cf, cu, cd)); set('weight', weight);
+            set(rrType === 'Prr' ? 'prr' : 'crr', rr); set('corner', corner);
+        }
+        if (groups.includes('options')) { set('climbs', climbs ? 1 : 0); set('weather', weatherOn ? 1 : 0); set('shadow', shadow ? 1 : 0); }
+        if (groups.includes('time')) set('time', time);
+        if (groups.includes('date')) set('date', date);
+        const fromLink = method !== 'Upload file';
+        const routeOk = fromLink && given(url) && /ridewithgps\.com\/(routes|trips)\/\d+/.test(url);
+        if (groups.includes('route') && routeOk) { set('route', url); if (rename) set('name', name); }
+        const query = params.toString().replace(/%2C/g, ',').replace(/%3A/g, ':');  // Readable; both allowed in a query
+        const link = window.location.origin + window.location.pathname + (query ? '?' + query : '');
+        const options = [
+            {label: 'Rider: power, CdA, weight, rolling resistance, cornering', value: 'rider'},
+            {label: 'Options: climbs, weather, terrain shadow', value: 'options'},
+            {label: 'Start time', value: 'time'}, {label: 'Start date', value: 'date'},
+            {label: fromLink ? 'Route: RideWithGPS link, course name' : 'Route: only for RideWithGPS links, not for uploaded files',
+             value: 'route', disabled: !fromLink},
+        ];
+        const warning = groups.includes('route') && routeOk && /privacy_code/.test(url)
+            ? 'The route link contains a privacy code: anyone with this settings link can open your private route.' : null;
+        return [link, options, warning];
+    }
+    """,
+    Output('share-link', 'value'), Output('share-groups', 'options'), Output('share-warning', 'children'),
+    Input('share-groups', 'value'), Input('input-method', 'value'),
+    Input('power-flat', 'value'), Input('power-up', 'value'), Input('power-down', 'value'),
+    Input('cda-flat', 'value'), Input('cda-up', 'value'), Input('cda-down', 'value'), Input('weight', 'value'),
+    Input('rr-type', 'value'), Input('rr-value', 'value'), Input('cornering', 'value'),
+    Input('climbs', 'value'), Input('weather-on', 'value'), Input('terrain-shadow', 'value'),
+    Input('start-time', 'value'), Input('start-date', 'date'), Input('url', 'value'), Input('course-rename', 'value'), Input('course-name', 'value'),
+)
+
 dash.clientside_callback(  # System light/dark setting at page load, so the figures are built in the right colors
     dash.ClientsideFunction(namespace='aeroracle', function_name='systemTheme'),
     Output('theme', 'data'),
@@ -1111,13 +1275,16 @@ dash.clientside_callback(  # System light/dark setting at page load, so the figu
 )
 
 dash.clientside_callback(  # Default start: the next full or half hour on the visitor's clock (next day after midnight)
-    """
+    r"""
     function (nIntervals) {
+        const link = new URLSearchParams(window.location.search);  // A settings link sets these itself (load_settings_link)
+        const keep = window.dash_clientside.no_update;
         const start = new Date();
         start.setSeconds(0, 0);
         start.setMinutes(start.getMinutes() < 30 ? 30 : 60);
         const pad = (n) => String(n).padStart(2, '0');
-        return [`${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`, `${pad(start.getHours())}:${pad(start.getMinutes())}`];
+        return [/^\d{4}-\d{2}-\d{2}$/.test(link.get('date') || '') ? keep : `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
+                /^\s*\d{1,2}[:.h]?\d{2}\s*$/.test(link.get('time') || '') ? keep : `${pad(start.getHours())}:${pad(start.getMinutes())}`];
     }
     """,
     Output('start-date', 'date', allow_duplicate=True), Output('start-time', 'value', allow_duplicate=True),

@@ -30,6 +30,14 @@ Website: <a href="https://www.hetzner.com" target="_blank" rel="noopener norefer
 ### Uploaded Files
 Your route files (GPX/TCX/FIT) are deleted immediately after processing. The processed files offered for download are deleted within 60 minutes.
 
+### Settings Links
+"Save or share settings" puts your chosen settings into the link itself. They are not stored on the server or in your
+browser. Anyone who has the link can see the settings it contains.
+
+### Server Logs
+The web server logs requests with shortened IP addresses (the last part removed), without the settings contained in
+a link.
+
 ### Anonymous Statistics
 For service monitoring:
 - Timestamps of usage
