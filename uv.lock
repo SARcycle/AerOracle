@@ -9,7 +9,7 @@ resolution-markers = [
 
 [[package]]
 name = "aeroracle"
-version = "4.4.0"
+version = "4.5.0"
 source = { virtual = "." }
 dependencies = [
     { name = "astral" },
@@ -48,7 +48,6 @@ tools = [
     { name = "geopandas" },
     { name = "pandas" },
     { name = "pygeodesy" },
-    { name = "wget" },
 ]
 web = [
     { name = "dash" },
@@ -92,7 +91,6 @@ requires-dist = [
     { name = "tilemapbase", specifier = ">=0.4.7" },
     { name = "timezonefinder", specifier = ">=9.2.0" },
     { name = "tzdata", specifier = ">=2026.5" },
-    { name = "wget", marker = "extra == 'tools'", specifier = ">=3.2" },
     { name = "xmltodict", specifier = ">=1.0.4" },
 ]
 provides-extras = ["web", "dashboard", "monitoring", "tools"]
@@ -2334,12 +2332,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/a4/34/4dd12fc8bb7d61c91
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a1/38/df03f564f43cec2684823f3cccae1a652ee7face1cbaa76fb223096e64d7/werkzeug-3.1.9-py3-none-any.whl", hash = "sha256:6392e50c78460ba618e5b21f08a71f59c99ce99cdc6cf6e3dd7e6ccca8754fab", size = 228700, upload-time = "2026-09-27T18:33:39.685Z" },
 ]
-
-[[package]]
-name = "wget"
-version = "3.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/47/6a/62e288da7bcda82b935ff0c6cfe542970f04e29c756b0e147251b2fb251f/wget-3.2.zip", hash = "sha256:35e630eca2aa50ce998b9b1a127bb26b30dfee573702782aa982f875e3f16061", size = 10857, upload-time = "2015-10-22T15:26:37.51Z" }
 
 [[package]]
 name = "wrapt"

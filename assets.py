@@ -2,45 +2,18 @@ import os
 
 import numpy as np
 
-import dem  # Needed for parallelizing the data ingestion and preprocessing steps
+import dem
 import utilities
 
 class Assets:
     def __init__(self, parameters):
-        #with concurrent.futures.ThreadPoolExecutor() as executor:
-            #task1 = executor.submit(self.load_tunnels, parameters)
-            #task2 = executor.submit(self.data_preprocessing, parameters)
-
-        #self.__setattr__('tunnels', task1.result())
-        #self.__setattr__('track', task2.result())
         self.__setattr__('track', self.data_preprocessing(parameters).track)
         self.track.set(gravity_ms2=self.get_gravity(parameters))
 
 
-    def load_tunnels(self, parameters):
-        import fiona
-        import shapely.geometry
-        from shapely.geometry import shape
-        from shapely.prepared import prep
-
-        try:
-            tunnels = prep(shapely.geometry.MultiPolygon([shape(pol['geometry']) for pol in fiona.open(
-                f'{parameters.folder_prefix}/GeoData/OSM/Tunnels/Tunnels_Europe_50mBuffer_Dissolve_MultiPoly.shp')]))
-            self.__setattr__('tunnels', tunnels)
-            return tunnels
-        except:
-            print('- Restoring European Tunnels from archive')
-            os.system(
-                f'ls {parameters.folder_prefix}/GeoData/OSM/Tunnels/old/*.zip -1t | head -n +1 | xargs unzip -q -d / -o')
-            tunnels = prep(shapely.geometry.MultiPolygon([shape(pol['geometry']) for pol in fiona.open(
-                f'{parameters.folder_prefix}/GeoData/OSM/Tunnels/Tunnels_Europe_50mBuffer_Dissolve_MultiPoly.shp')]))
-            self.__setattr__('tunnels', tunnels)
-            return tunnels
-
     def data_preprocessing(self, parameters):
         import track
         if not parameters.url is None: # if URL is given
-            # utilities.tcx_download(parameters)
             utilities.rwgps_download(parameters)
         self.track = track.Track(parameters)
         rwgps_json = getattr(parameters, 'rwgps_json', None)

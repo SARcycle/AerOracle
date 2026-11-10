@@ -1,3 +1,12 @@
+"""
+Monthly update of the OSM data: region outlines, tunnels and bridges (see osm.py), for every Geofabrik region.
+
+    uv run python tools/osm/update.py [region ...]      e.g. with AERORACLE_DATA_DIR=<test folder> switzerland
+
+Builds into staging folders and swaps them in atomically at the end, the old versions are archived.
+Aborts, keeping the production data, if a region fails or a data set shrinks by more
+than 20 %. Only one update at a time (lock file). Without regions: all of them (may take several hours).
+"""
 from zipfile import ZipFile
 import csv
 import glob
@@ -72,10 +81,15 @@ def release_update_lock(lock_fd):
 KEEP_ARCHIVES = 3  # Zip archives per data set in GeoData/OSM/archive/<name>/
 KEEP_VERSIONS = 2  # Versioned folders per data set (<name>_v<timestamp>)
 
+def data_files(folder):
+    """The data files of a version folder: GeoPackages (since 4.5.0) or shapefiles (before)."""
+    return sorted(glob.glob(os.path.join(folder, '*.gpkg')) or glob.glob(os.path.join(folder, '*_MultiPoly.shp')))
+
+
 def archive_production(production, archive_dir, timestamp, target_user):
-    """Zip the production *_MultiPoly.* files into archive_dir/<timestamp>.zip; keep the newest KEEP_ARCHIVES."""
+    """Zip the production data files into archive_dir/<timestamp>.zip; keep the newest KEEP_ARCHIVES."""
     actual = os.path.realpath(production)
-    files = sorted(glob.glob(os.path.join(actual, '*_MultiPoly.*')))
+    files = sorted(glob.glob(os.path.join(actual, '*.gpkg')) + glob.glob(os.path.join(actual, '*_MultiPoly.*')))
     os.makedirs(archive_dir, exist_ok=True)
     legacy = os.path.join(actual, 'old')  # Former outline archives inside the outlines folder
     for old_zip in sorted(glob.glob(os.path.join(legacy, '*.zip'))):
@@ -149,103 +163,48 @@ try:
                 f.writelines([lines[0]] + [line for line in lines[1:] if line.split(';')[1] in regions])
             print(f'Only regions: {", ".join(regions)}')
 
-        # Use staging directories that don't interfere with production
+        with open(csv_path) as f:
+            rows = [r for r in csv.reader(f, delimiter=';')][1:]
+
+        # Staging folders: production stays untouched until the swap at the end
+        savepath = os.path.join(base_path, 'countries')
         staging_outlines = os.path.join(base_path, 'outlines_staging')
         production_outlines = os.path.join(base_path, 'outlines')
-        print('Building outlines (staging)...')
-        osm.outlines_from_kml(csv_path, staging_outlines)
-
-        savepath = os.path.join(base_path, 'countries')
         staging_tunnels = os.path.join(savepath, 'tunnels_staging')
         staging_bridges = os.path.join(savepath, 'bridges_staging')
-        
-        # Production symlinks (these will always point to valid data)
         production_tunnels = os.path.join(savepath, 'tunnels')
         production_bridges = os.path.join(savepath, 'bridges')
-        
-        # Create staging directories
-        os.makedirs(staging_tunnels, exist_ok=True)
-        os.makedirs(staging_bridges, exist_ok=True)
+        for staging in (staging_tunnels, staging_bridges):
+            if os.path.lexists(staging):  # Leftovers of an aborted update
+                shutil.rmtree(staging)
+            os.makedirs(staging)
 
-        # Process all countries - extract both tunnels AND bridges in single pass
-        print('Processing countries (extracting tunnels and bridges)...')
-        with open(csv_path) as csv_file:
-            csv_reader = csv.reader(csv_file, delimiter=';')
-            next(csv_reader)  # Skipping header line
-            for row in csv_reader:
-                print('Working on {}'.format(row[0]))
-                osm.download_extract_buffer(row[0], row[1], row[2], 'tunnels', staging_tunnels)
-                osm.download_extract_buffer(row[0], row[1], row[2], 'bridges', staging_bridges)
-                try:
-                    os.remove(f"{os.path.join(tmp_folder, 'RAW', os.path.basename(row[2]).replace('.osm.pbf', '.o5m'))}")
-                except:
-                    pass
+        print('Building outlines (staging)...')
+        failed = osm.outlines_from_kml(rows, staging_outlines, tmp_folder)
 
-        print('Merging SHPs (Tunnels)')
-        osm.merge_shapefiles(staging_tunnels)
-        
-        print('Merging SHPs (Bridges)')
-        osm.merge_shapefiles(staging_bridges)
+        print('Tunnels and bridges (one download and one processing at a time)...')
+        timings, seconds, failed_regions = osm.process_regions(rows, {'tunnels': staging_tunnels, 'bridges': staging_bridges}, tmp_folder)
+        failed += failed_regions
+        print(f'{len(timings)} regions in {seconds / 3600:.1f} h')
+        if failed:  # Incomplete data would drop the corrections of whole countries: keep production
+            raise Exception(f'{len(failed)} regions failed ({", ".join(sorted(set(failed)))}). Production data kept; run again.')
 
-        # Clean up temporary files
-        os.system('rm -rf {}/SHP'.format(tmp_folder))
-        os.system(f'rm -rf {os.path.join(tmp_folder,"OSM/RAW")}')
-        os.system(f'rm -rf {os.path.join(tmp_folder, "SHP", "tunnels")}')
-        os.system(f'rm -rf {os.path.join(tmp_folder, "SHP", "bridges")}')
-
-        # Multi2single conversion
-        merged_files = sorted(glob.glob(os.path.join(savepath, '*_staging/*_merged.shp')))
-        for file in merged_files:
-            print(f'Multipart -> Singleparts ({os.path.basename(file).replace("_merged.shp", "").capitalize()}', end="")
-            start_time = time.time()
-            
-            result = osm.multi_to_single(file, file.replace(".shp", "_MultiPoly.shp"))
-            
-            if result != 0:
-                print(' FAILED!')
-                raise Exception(f'ogr2ogr (multipart -> singleparts) failed with code {result}')
-            else:
-                output_size = os.path.getsize(file.replace(".shp", "_MultiPoly.shp"))
-                print(f'; {utilities.sizeof_fmt(os.path.getsize(file))} --> {utilities.sizeof_fmt(output_size)}; {time.time()-start_time:0.3f} s)')
-                
-                # Fix ownership of created file if running as root
-                if os.geteuid() == 0:
-                    fix_ownership(file.replace(".shp", "_MultiPoly.shp"), target_user)
-                    # Fix all related files (.shx, .dbf, etc)
-                    base_name = file.replace("_merged.shp", "_MultiPoly")
-                    for ext in ['.shp', '.shx', '.dbf', '.prj']:
-                        if os.path.exists(base_name + ext):
-                            fix_ownership(base_name + ext, target_user)
-
-        # Clean up non-MultiPoly files
-        os.system(f'rm {os.path.join(savepath,"*_staging","*.dbf")}')
-        for file in sorted(glob.glob(os.path.join(savepath, '*_staging', '*'))):
-            if "MultiPoly" not in os.path.basename(file) and not os.path.isdir(file):
-                os.remove(file)
-
-        # Favourites handling
-        favourites = ['switzerland', 'liechtenstein', 'germany', 'france', 'italy', 'austria', 'spain', 'canaryislands']
-        fav_counter = 0
-        all_files = sorted(glob.glob(os.path.join(savepath, '*_staging', '*')))
-        for fav in favourites:
-            fav_counter += 1
-            for file in all_files:
-                if fav in file:
-                    os.rename(file, file.replace(fav, f'{fav_counter}_{fav}'))
+        for staging in (staging_outlines, staging_tunnels, staging_bridges):
+            osm.prefix_favourites(staging)
+            for path in data_files(staging):
+                fix_ownership(path, target_user)
 
         # Never swap in (nearly) empty data: compare with the current production version
         data_sets = (('outlines', staging_outlines, production_outlines),
                      ('tunnels', staging_tunnels, production_tunnels), ('bridges', staging_bridges, production_bridges))
         for _, staging, production in data_sets:
-            new_count = len(glob.glob(os.path.join(staging, '*_MultiPoly.shp')))
-            old_count = len(glob.glob(os.path.join(production, '*_MultiPoly.shp')))
+            new_count = len(data_files(staging))
+            old_count = len(data_files(production))
             if new_count == 0 or new_count < 0.8 * old_count:
                 raise Exception(f'{os.path.basename(production).capitalize()}: only {new_count} new files (currently {old_count}). '
                                 f'Production data kept; check the output above for failed steps.')
 
-        # Write data date into the tunnels staging folder (must happen AFTER the
-        # non-MultiPoly cleanup above). It is swapped atomically together with the data
-        # and read by the Streamlit footer via utilities.get_osm_data_date().
+        # Data date in the tunnels staging folder: swapped together with the data, read by utilities.get_osm_data_date()
         osm_date_file = os.path.join(staging_tunnels, 'osm_data_date.json')
         with open(osm_date_file, 'w') as f:
             json.dump({'osm_data_date': time.strftime('%Y-%m'),
@@ -291,5 +250,4 @@ try:
 except KeyboardInterrupt:
     print('Manually interrupted')
 finally:
-    os.system('rm -f *.osm.pbf*.tmp')
-    os.system('rm -f osmfilter_tempfile*')
+    shutil.rmtree(osm.TMP_DIR, ignore_errors=True)

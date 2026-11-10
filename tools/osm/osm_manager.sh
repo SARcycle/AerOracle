@@ -83,9 +83,9 @@ cmd_status() {
         echo -e "  Outlines: ${GREEN}$OUTLINE_TARGET${NC}"
 
         if [ -d "$BASE_PATH/$OUTLINE_TARGET" ]; then
-            FILE_COUNT=$(find "$BASE_PATH/$OUTLINE_TARGET" -name "*_MultiPoly.shp" | wc -l)
+            FILE_COUNT=$(find "$BASE_PATH/$OUTLINE_TARGET" \( -name "*.gpkg" -o -name "*_MultiPoly.shp" \) | wc -l)
             TOTAL_SIZE=$(du -sh "$BASE_PATH/$OUTLINE_TARGET" | cut -f1)
-            echo "    Files: $FILE_COUNT shapefiles"
+            echo "    Files: $FILE_COUNT files"
             echo "    Size: $TOTAL_SIZE"
         fi
     elif [ -d "$BASE_PATH/outlines" ]; then
@@ -100,9 +100,9 @@ cmd_status() {
         echo -e "  Tunnels: ${GREEN}$TUNNEL_TARGET${NC}"
         
         if [ -d "$COUNTRIES_PATH/$TUNNEL_TARGET" ]; then
-            FILE_COUNT=$(find "$COUNTRIES_PATH/$TUNNEL_TARGET" -name "*_MultiPoly.shp" | wc -l)
+            FILE_COUNT=$(find "$COUNTRIES_PATH/$TUNNEL_TARGET" \( -name "*.gpkg" -o -name "*_MultiPoly.shp" \) | wc -l)
             TOTAL_SIZE=$(du -sh "$COUNTRIES_PATH/$TUNNEL_TARGET" | cut -f1)
-            echo "    Files: $FILE_COUNT shapefiles"
+            echo "    Files: $FILE_COUNT files"
             echo "    Size: $TOTAL_SIZE"
         fi
     else
@@ -115,9 +115,9 @@ cmd_status() {
         echo -e "  Bridges: ${GREEN}$BRIDGE_TARGET${NC}"
         
         if [ -d "$COUNTRIES_PATH/$BRIDGE_TARGET" ]; then
-            FILE_COUNT=$(find "$COUNTRIES_PATH/$BRIDGE_TARGET" -name "*_MultiPoly.shp" | wc -l)
+            FILE_COUNT=$(find "$COUNTRIES_PATH/$BRIDGE_TARGET" \( -name "*.gpkg" -o -name "*_MultiPoly.shp" \) | wc -l)
             TOTAL_SIZE=$(du -sh "$COUNTRIES_PATH/$BRIDGE_TARGET" | cut -f1)
-            echo "    Files: $FILE_COUNT shapefiles"
+            echo "    Files: $FILE_COUNT files"
             echo "    Size: $TOTAL_SIZE"
         fi
     else
@@ -177,7 +177,7 @@ cmd_list_versions() {
     for dir in $(ls -dt "$COUNTRIES_PATH"/*_v* "$BASE_PATH"/outlines_v* 2>/dev/null); do
         DIRNAME=$(basename "$dir")
         SIZE=$(du -sh "$dir" | cut -f1)
-        FILE_COUNT=$(find "$dir" -name "*_MultiPoly.shp" 2>/dev/null | wc -l)
+        FILE_COUNT=$(find "$dir" \( -name "*.gpkg" -o -name "*_MultiPoly.shp" \) 2>/dev/null | wc -l)
         MTIME=$(stat -c %y "$dir" | cut -d' ' -f1)
 
         if [ -L "$COUNTRIES_PATH/tunnels" ] && [ "$(readlink "$COUNTRIES_PATH/tunnels")" = "$DIRNAME" ]; then
@@ -502,28 +502,28 @@ cmd_verify() {
     # Check for required files
     echo ""
     echo "Checking data files..."
-    TUNNEL_FILES=$(find "$(readlink -f $COUNTRIES_PATH/tunnels 2>/dev/null || echo /nonexistent)" -name "*_MultiPoly.shp" 2>/dev/null | wc -l)
-    BRIDGE_FILES=$(find "$(readlink -f $COUNTRIES_PATH/bridges 2>/dev/null || echo /nonexistent)" -name "*_MultiPoly.shp" 2>/dev/null | wc -l)
-    OUTLINE_FILES=$(find "$(readlink -f $BASE_PATH/outlines 2>/dev/null || echo /nonexistent)" -maxdepth 1 -name "*_MultiPoly.shp" 2>/dev/null | wc -l)
+    TUNNEL_FILES=$(find "$(readlink -f $COUNTRIES_PATH/tunnels 2>/dev/null || echo /nonexistent)" \( -name "*.gpkg" -o -name "*_MultiPoly.shp" \) 2>/dev/null | wc -l)
+    BRIDGE_FILES=$(find "$(readlink -f $COUNTRIES_PATH/bridges 2>/dev/null || echo /nonexistent)" \( -name "*.gpkg" -o -name "*_MultiPoly.shp" \) 2>/dev/null | wc -l)
+    OUTLINE_FILES=$(find "$(readlink -f $BASE_PATH/outlines 2>/dev/null || echo /nonexistent)" -maxdepth 1 \( -name "*.gpkg" -o -name "*_MultiPoly.shp" \) 2>/dev/null | wc -l)
 
     if [ $TUNNEL_FILES -gt 0 ]; then
-        print_success "Tunnel files OK ($TUNNEL_FILES shapefiles)"
+        print_success "Tunnel files OK ($TUNNEL_FILES files)"
     else
-        print_error "No tunnel shapefiles found"
+        print_error "No tunnel files found"
         ERRORS=$((ERRORS + 1))
     fi
     
     if [ $BRIDGE_FILES -gt 0 ]; then
-        print_success "Bridge files OK ($BRIDGE_FILES shapefiles)"
+        print_success "Bridge files OK ($BRIDGE_FILES files)"
     else
-        print_error "No bridge shapefiles found"
+        print_error "No bridge files found"
         ERRORS=$((ERRORS + 1))
     fi
 
     if [ $OUTLINE_FILES -gt 0 ]; then
-        print_success "Outline files OK ($OUTLINE_FILES shapefiles)"
+        print_success "Outline files OK ($OUTLINE_FILES files)"
     else
-        print_error "No outline shapefiles found"
+        print_error "No outline files found"
         ERRORS=$((ERRORS + 1))
     fi
 

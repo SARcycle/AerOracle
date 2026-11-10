@@ -113,7 +113,8 @@ def cell_is_sea(folder_prefix, i, j):
     land = copernicus_land_cells()
     if land is not None:
         return (i, j) not in land
-    outlines = glob.glob(os.path.join(os.path.realpath(f'{folder_prefix}/GeoData/OSM/outlines'), '*MultiPoly.shp'))
+    import tunnels_bridges
+    outlines = tunnels_bridges.osm_files(os.path.realpath(f'{folder_prefix}/GeoData/OSM/outlines'))
     if not outlines:
         return False  # Unknown: rather report the horizon as unknown
     bbox = (float(j), float(i), float(j + 1), float(i + 1))

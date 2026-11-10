@@ -10,6 +10,23 @@ import numpy as np
 import utilities
 
 
+def osm_files(folder):
+    """
+    Data files of an OSM folder (outlines, tunnels, bridges), in name order.
+    GeoPackages since OSM update of version 4.5.0; shapefiles from before still read until next update.
+    """
+    return sorted(glob.glob(os.path.join(folder, '*.gpkg'))) or sorted(glob.glob(os.path.join(folder, '*MultiPoly.shp')))
+
+
+def region_key(path):
+    """Region of a data file, the same for its outline, tunnels and bridges: 1_switzerland.gpkg -> 1_switzerland
+    (shapefiles: 1_switzerland_merged_dissolved_MultiPoly.shp / 1_switzerland_merged_MultiPoly.shp -> 1_switzerland)."""
+    name = os.path.splitext(os.path.basename(path))[0]
+    for suffix in ('_MultiPoly', '_dissolved', '_merged'):
+        name = name.removesuffix(suffix)
+    return name
+
+
 def is_update_in_progress(folder_prefix):
     """Check if an update is currently in progress"""
     lock_file = os.path.join(folder_prefix, 'GeoData/OSM/.update_in_progress.lock')
@@ -36,7 +53,7 @@ def safe_restore_from_archive(file_location, asset_type, folder_prefix):
     Returns True if files are available (either already present or restored), False otherwise.
     """
     # Check if files already exist
-    if len(glob.glob(os.path.join(file_location, '*MultiPoly.shp'))) > 0:
+    if osm_files(file_location):
         return True
 
     # Check if update is in progress
@@ -65,7 +82,7 @@ def safe_restore_from_archive(file_location, asset_type, folder_prefix):
         except (OSError, zipfile.BadZipFile) as e:
             print(f'- Restoring {asset_type} failed: {e}')
             return False
-        return len(glob.glob(os.path.join(file_location, '*MultiPoly.shp'))) > 0
+        return len(osm_files(file_location)) > 0
     else:
         print(f'- No valid archive found for {asset_type}')
         return False
@@ -80,12 +97,12 @@ def __init__(parameters, assets):
 @functools.lru_cache(maxsize=4)
 def outline_bounds(outline_path, folder_mtime) -> dict:
     """
-    Bounds (min lon, min lat, max lon, max lat) of every outline shapefile, read once per process. Cached per folder
+    Bounds (min lon, min lat, max lon, max lat) of every outline file, read once per process. Cached per folder
     and its modification time (-> update safe).
     """
     import fiona
     bounds = {}
-    for path in glob.glob(os.path.join(outline_path, '*MultiPoly.shp')):
+    for path in osm_files(outline_path):
         try:
             with fiona.open(path) as source:
                 bounds[path] = tuple(source.bounds)
@@ -101,7 +118,7 @@ def find_osm_country(parameters, assets):
 
     outline_path = os.path.realpath(outline_path)  # Version folder behind the symlink
 
-    outlines = glob.glob(os.path.join(outline_path, '*MultiPoly.shp'))
+    outlines = osm_files(outline_path)
 
     if len(outlines) == 0:
         # Try to restore, but respect update locks
@@ -110,7 +127,7 @@ def find_osm_country(parameters, assets):
             archive_dir = os.path.join(parameters.folder_prefix, 'GeoData/OSM/archive/outlines')
             if os.path.exists(archive_dir):
                 safe_restore_from_archive(outline_path, 'outlines', parameters.folder_prefix)
-                outlines = glob.glob(os.path.join(outline_path, '*MultiPoly.shp'))
+                outlines = osm_files(outline_path)
 
         if len(outlines) == 0:
             print('- Warning: No outline files available')
@@ -130,7 +147,7 @@ def find_osm_country(parameters, assets):
         inside = utilities.points_in_shapes(lat, lon, utilities.read_shapes(outline, bbox=bbox))
         if inside.any():
             assigned |= inside  # Distinct points: near borders a point lies within two (overlapping) outlines
-            country = os.path.basename(outline).replace('_dissolved', '')
+            country = region_key(outline)
             if country not in ctry:
                 ctry.append(country)
     parameters.__setattr__('countries', ctry)
@@ -146,7 +163,7 @@ def passage_mask(parameters, assets, asset_type):
         file_location = os.path.realpath(file_location)
 
     # Check if files exist, restore if needed (but respect update locks)
-    if len(glob.glob(os.path.join(file_location, '*MultiPoly.shp'))) == 0:
+    if not osm_files(file_location):
         if not safe_restore_from_archive(file_location, asset_type, parameters.folder_prefix):
             print(f'- Warning: {asset_type.capitalize()} data not available, skipping {asset_type[:-1]} height correction')
             return None, file_location
@@ -155,9 +172,10 @@ def passage_mask(parameters, assets, asset_type):
     mask = np.zeros(len(lat), dtype=bool)
     bbox = utilities.bounding_box(lat, lon)  # Only the polygons near the route are read
 
+    files = {region_key(path): path for path in osm_files(file_location)}
     for country in parameters.countries:
-        country_file = os.path.join(file_location, country)
-        if not os.path.exists(country_file):
+        country_file = files.get(country)
+        if country_file is None:
             print(f'- {asset_type.capitalize()} for {country} could not be found')
         else:
             try:
@@ -178,7 +196,7 @@ def interpolate_elevation(assets, keep):
     assets.track.set(elevation_m=np.interp(interpvec_temp, interpvec_temp[keep], elevation[keep]))
 
 def print_data_version(message, file_location):
-    file_list = glob.glob(os.path.join(file_location, '*MultiPoly.shp'))
+    file_list = osm_files(file_location)
     if len(file_list) > 0:
         file_date = datetime.datetime.fromtimestamp(os.path.getmtime(file_list[0]))
         print(f'\t- {message} (V{file_date.strftime("%Y.%m")})')

@@ -1,523 +1,269 @@
-import glob
+"""
+OSM tunnels, bridges and region outlines for AerOracle (used by update.py).
+
+Tunnels and bridges, per Geofabrik region:
+1. Download the region's .osm.pbf (MD5 checked, progress output every 30 s). The next region downloads while the current one
+   is processed: one download and one processing at a time, at most two .pbf files on disk.
+2. One `osmium tags-filter` pass: ways with tunnel=yes or any bridge tag, plus their nodes. Without osmium, GDAL
+   reads the whole .pbf (slower, same result).
+3. Per type, in GeoPackage: road classes (highway *ary*, unclassified, residential, living_street, pedestrian, road,
+   cycleway; not bicycle=no) and tunnel=yes or bridge=*. Then projection to UTM, simplification by a tolerance of SIMPLIFY_M,
+   bridges at least MIN_BRIDGE_M long, buffered by BUFFER_M, merged and split into single polygons, reprojection to WGS84.
+   Output: <folder>/<name>.gpkg, one layer.
+Outlines: the region's KML, made valid, merged and split into single polygons: <folder>/<name>.gpkg.
+Favourite regions get a number prefix (1_switzerland.gpkg ...): the app checks them first.
+"""
+import hashlib
+import os
+import queue
+import re
+import shutil
+import subprocess
 import sys
+import threading
 import time
 
-import os
 import requests
-import wget
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))  # Project root: config, utilities
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))  # Project root: config
 import config
-import utilities
 
-TMP_DIR = os.path.join(config.TEMP_DIR, 'OSM')  # Extracts of up to a few GB: temp_dir must be on disk, not a small tmpfs
+TMP_DIR = os.path.join(config.TEMP_DIR, 'OSM')  # .pbf of up to a few GB
 
-
-def multi_to_single(source, target):
-    """Split the multi-part polygons of a shapefile into single parts (WGS84). Returns the exit status of ogr2ogr (0 = success)."""
-    return os.system(f'ogr2ogr -overwrite -explodecollections -nlt POLYGON -a_srs EPSG:4326 {target} {source}')
-
-
-def download_extract_buffer_tunnels(ctry_name, continentcntry, url, savepath=None, searchparameters='--keep-ways= --keep-relations= --keep=" ( highway=*ary* =unclassified =residential =living_street =pedestrian =road =cycleway ) and tunnel=yes" --drop="bicycle=no"', bufferdistance=0.000354):
-
-    tmp_folder = TMP_DIR
-
-    tmp_folder_osm = tmp_folder+'/RAW'
-    tmp_folder_shp = tmp_folder+'/SHP'
-
-    if not os.path.isdir(tmp_folder_osm):
-        os.makedirs(tmp_folder_osm)
-    if not os.path.isdir(tmp_folder_shp):
-        os.makedirs(tmp_folder_shp)
-    country = url[url.rfind("/") + 1:url.find("-latest")]
-    print('Working on {}'.format(ctry_name))
-    download_osm_file(url, tmp_folder_osm, country)
-
-    print("\t- Extracting OSM Data")
-    cmdstr = "osmfilter {}/{}-latest.o5m {} -o={}/{}-extract.osm > /dev/null 2>&1".format(tmp_folder_osm, country, searchparameters, tmp_folder_osm, continentcntry)
-    os.system(cmdstr)
-    os.remove("{}/{}-latest.o5m".format(tmp_folder_osm, country))
-#    print('\t- Buffering')
-#    print('\t\t- Lines')
-    print("\t- Converting to SHP")
-    if savepath is not None: # if working on world
-        cmdstr = 'ogr2ogr {}/{}.shp {}/{}-extract.osm -simplify 0.00006 -dialect sqlite -sql \"SELECT ST_Union(ST_Buffer(geometry, {})) AS geometry,* FROM \'lines\'\" -f \"ESRI Shapefile\" > /dev/null 2>&1'.format(
-            savepath, continentcntry, tmp_folder_osm, continentcntry, bufferdistance)
-    else:
-        cmdstr = 'ogr2ogr {}/{}_l.shp {}/{}-extract.osm -simplify 0.00006 -dialect sqlite -sql \"SELECT ST_Union(ST_Buffer(geometry, {})) AS geometry,* FROM \'lines\'\" -f \"ESRI Shapefile\" > /dev/null 2>&1'.format(tmp_folder_shp, continentcntry, tmp_folder_osm, continentcntry, bufferdistance)
-#    cmdstr = 'ogr2ogr {}/{}_l.shp {}/{}-extract.osm -a_srs +init="epsg:4326" simplify 0.00006 -dialect sqlite -sql \"SELECT ST_Union(ST_Buffer(geometry, {})) AS geometry,* FROM \'lines\'\" -f \"ESRI Shapefile\"'.format(tmp_folder_shp, country, tmp_folder_osm, country, bufferdistance)
-#    print(cmdstr)
-#    print('Waiting')
-#    time.sleep(5)
-    os.system(cmdstr)
-    #    print('\t\t- MultiLineStrings')
-#    cmdstr = 'ogr2ogr {}/{}_mls.shp {}/{}-extract.osm -dialect sqlite -sql \"SELECT ST_Union(ST_Buffer(geometry, {})) AS geometry,* FROM \'multilinestrings\'\" -f \"ESRI Shapefile\"'.format(savepath, country, tmp_folder, country, bufferdistance)
-#    os.system(cmdstr)
-    os.remove('{}/{}-extract.osm'.format(tmp_folder_osm, continentcntry))
-
-def download_extract_buffer(ctry_name, continentcntry, url, search_object, savepath=None, bufferdistance=0.000354):
-    if search_object == 'tunnels':
-        searchparameters = '--keep-ways= --keep-relations= --keep=" ( highway=*ary* =unclassified =residential =living_street =pedestrian =road =cycleway ) and tunnel=yes" --drop="bicycle=no"'
-    elif search_object == 'bridges':
-        searchparameters = '--keep-ways= --keep-relations= --keep=" ( highway=*ary* =unclassified =residential =living_street =pedestrian =road =cycleway ) and bridge=*" --drop="bicycle=no"'
-
-    tmp_folder = TMP_DIR
-
-    tmp_folder_osm = os.path.join(tmp_folder, 'RAW')
-    tmp_folder_shp = os.path.join(tmp_folder, 'SHP', search_object)
-
-    if not os.path.isdir(tmp_folder_osm):
-        os.makedirs(tmp_folder_osm)
-    if not os.path.isdir(tmp_folder_shp):
-        os.makedirs(tmp_folder_shp)
-    # if(not os.path.isdir(savepath)):
-    #     os.makedirs(savepath)
-
-    country = url[url.rfind("/") + 1:url.find("-latest")]
-    download_osm_file(url, tmp_folder_osm, country)
-    print(f'\t- {search_object.capitalize()}')
-    print(f"\t\t- Extracting OSM Data")
-    start_size = utilities.sizeof_fmt(
-        sum(os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(tmp_folder_osm, f'{country}-latest.o5m')))))
-    cmdstr = "osmfilter {}/{}-latest.o5m {} -o={}/{}-extract.osm > /dev/null 2>&1".format(tmp_folder_osm, country, searchparameters, tmp_folder_osm, continentcntry)
-    start_time = time.time()
-    os.system(cmdstr)
-    end_size = utilities.sizeof_fmt(
-        sum(os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(tmp_folder_osm, f'{continentcntry}-extract.osm')))))
-    print(f'\t\t\t- {start_size} --> {end_size}; {time.time()-start_time:0.3f} s')
-    #    print('\t- Buffering')
-#    print('\t\t- Lines')
-    if savepath is not None: # if working on world
-        if not os.path.exists(savepath):
-            os.makedirs(savepath)
-        if search_object == 'bridges':
-            print(f"\t\t- Converting to SHP")
-            start_size = utilities.sizeof_fmt(sum(os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(tmp_folder_osm, f'{continentcntry}-extract.osm')))))
-            cmdstr = 'ogr2ogr {}/{}_raw.shp {}/{}-extract.osm -simplify 0.00006 -f \"ESRI Shapefile\" lines > /dev/null 2>&1'.format(
-                tmp_folder_shp, continentcntry, tmp_folder_osm, continentcntry)
-            start_time = time.time()
-            os.system(cmdstr)
-            end_size = utilities.sizeof_fmt(sum(os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(tmp_folder_shp, f'{continentcntry}_raw.*')))))
-            print(f'\t\t\t- {start_size} --> {end_size}; {time.time()-start_time:0.3f} s')
-            os.remove('{}/{}-extract.osm'.format(tmp_folder_osm, continentcntry))
-
-            length_filtering(os.path.join(tmp_folder_shp,f'{continentcntry}_raw.shp'), os.path.join(tmp_folder_shp,f'{continentcntry}_filtered.shp'), 50)
-
-            print(f"\t\t- Cleaning attribute table")
-            start_size = utilities.sizeof_fmt(
-                sum(os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(tmp_folder_shp, f'{continentcntry}_filtered.*')))))
-            cmdstr = f'ogr2ogr {tmp_folder_shp}/{continentcntry}_clean.shp {tmp_folder_shp}/{continentcntry}_filtered.shp -dialect sqlite -sql "SELECT geometry FROM \'{continentcntry}_filtered\'" > /dev/null 2>&1'
-            start_time = time.time()
-            os.system(cmdstr)
-            end_size = utilities.sizeof_fmt(
-                sum(os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(tmp_folder_shp, f'{continentcntry}_clean.*')))))
-            print(f'\t\t\t- {start_size} --> {end_size}; {time.time()-start_time:0.3f} s')
-            os.system(f'rm {tmp_folder_shp}/{continentcntry}_filtered.*')
-
-            print(f"\t\t- Buffering features")
-            start_size = end_size
-            cmdstr = 'ogr2ogr {}/{}_buffered.shp {}/{}_clean.shp -simplify 0.00006 -dialect sqlite -sql \"SELECT ST_Buffer(geometry, {}) AS geometry,* FROM \'{}_clean\'\" -f \"ESRI Shapefile\"'.format(
-            tmp_folder_shp, continentcntry, tmp_folder_shp, continentcntry, bufferdistance, continentcntry)
-            start_time = time.time()
-            os.system(cmdstr)
-            end_size = utilities.sizeof_fmt(sum(os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(tmp_folder_shp, f'{continentcntry}_buffered.*')))))
-            print(f'\t\t\t- {start_size} --> {end_size}; {time.time()-start_time:0.3f} s')
-            os.system(f'rm {tmp_folder_shp}/{continentcntry}_clean.*')
-
-            print(f"\t\t- Dissolving features")
-            start_size = end_size
-            cmdstr = 'ogr2ogr {}/{}.shp {}/{}_buffered.shp -simplify 0.00006 -dialect sqlite -sql \"SELECT ST_Union(geometry) AS geometry,* FROM \'{}_buffered\'\" -f \"ESRI Shapefile\"'.format(
-            savepath, continentcntry, tmp_folder_shp, continentcntry, continentcntry)
-            start_time = time.time()
-            os.system(cmdstr)
-            end_size = utilities.sizeof_fmt(sum(os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(savepath, f'{continentcntry}.*')))))
-            print(f'\t\t\t- {start_size} --> {end_size}; {time.time()-start_time:0.3f} s')
-            os.system(f'rm {tmp_folder_shp}/{continentcntry}_buffered.*')
-        else:
-            print(f"\t\t- Converting to SHP & cleaning attribute table")
-            start_size = utilities.sizeof_fmt(sum(
-                os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(tmp_folder_osm, f'{continentcntry}-extract.osm')))))
-            cmdstr = 'ogr2ogr {}/{}_raw.shp {}/{}-extract.osm -simplify 0.00006 -f \"ESRI Shapefile\" lines > /dev/null 2>&1'.format(
-                tmp_folder_shp, continentcntry, tmp_folder_osm, continentcntry)
-            start_time = time.time()
-            os.system(cmdstr)
-            end_size = utilities.sizeof_fmt(
-                sum(os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(tmp_folder_shp, f'{continentcntry}_raw.*')))))
-            print(f'\t\t\t- {start_size} --> {end_size}; {time.time() - start_time:0.3f} s')
-            os.remove('{}/{}-extract.osm'.format(tmp_folder_osm, continentcntry))
-
-            print(f"\t\t- Buffering features")
-            start_size = end_size
-            cmdstr = 'ogr2ogr {}/{}_buffered.shp {}/{}_raw.shp -simplify 0.00006 -dialect sqlite -sql \"SELECT ST_Buffer(geometry, {}) AS geometry,* FROM \'{}_raw\'\" -f \"ESRI Shapefile\"'.format(
-                tmp_folder_shp, continentcntry, tmp_folder_shp, continentcntry, bufferdistance, continentcntry)
-            start_time = time.time()
-            os.system(cmdstr)
-            end_size = utilities.sizeof_fmt(sum(
-                os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(tmp_folder_shp, f'{continentcntry}_buffered.*')))))
-            print(f'\t\t\t- {start_size} --> {end_size}; {time.time() - start_time:0.3f} s')
-            os.system(f'rm {tmp_folder_shp}/{continentcntry}_raw.*')
-
-            print(f"\t\t- Dissolving features")
-            start_size = end_size
-            cmdstr = 'ogr2ogr {}/{}.shp {}/{}_buffered.shp -simplify 0.00006 -dialect sqlite -sql \"SELECT ST_Union(geometry) AS geometry,* FROM \'{}_buffered\'\" -f \"ESRI Shapefile\"'.format(
-                savepath, continentcntry, tmp_folder_shp, continentcntry, continentcntry)
-            start_time = time.time()
-            os.system(cmdstr)
-            end_size = utilities.sizeof_fmt(
-                sum(os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(savepath, f'{continentcntry}.*')))))
-            print(f'\t\t\t- {start_size} --> {end_size}; {time.time() - start_time:0.3f} s')
-            os.system(f'rm {tmp_folder_shp}/{continentcntry}_buffered.*')
-
-    else:
-        cmdstr = 'ogr2ogr {}/{}_l.shp {}/{}-extract.osm -simplify 0.00006 -dialect sqlite -sql \"SELECT ST_Union(ST_Buffer(geometry, {})) AS geometry,* FROM \'lines\'\" -f \"ESRI Shapefile\" > /dev/null 2>&1'.format(tmp_folder_shp, continentcntry, tmp_folder_osm, continentcntry, bufferdistance)
-        os.system(cmdstr)
-
-def download_extract_buffer_tunnels_bridges(ctry_name, continentcntry, url, savepath=None, searchparameters='--keep-ways= --keep-relations= --keep=" ( highway=*ary* =unclassified =living_street =road =cycleway ) and ( tunnel=yes or bridge=* )" --drop="bicycle=no"', bufferdistance=0.000354):
-
-    tmp_folder = os.path.join(TMP_DIR, 'Tunnels')
-
-    tmp_folder_osm = tmp_folder+'/OSM'
-    tmp_folder_shp = tmp_folder+'/SHP'
-
-    if not os.path.isdir(tmp_folder_osm):
-        os.makedirs(tmp_folder_osm)
-    if not os.path.isdir(tmp_folder_shp):
-        os.makedirs(tmp_folder_shp)
-    if not os.path.isdir(savepath):
-        os.makedirs(savepath)
-
-    country = url[url.rfind("/") + 1:url.find("-latest")]
-
-    print("Working on {}".format(ctry_name))
-    download_osm_file(url, tmp_folder_osm, country)
-    print("\t- Extracting OSM Data")
-    cmdstr = "osmfilter {}/{}-latest.o5m {} -o={}/{}-extract.osm".format(tmp_folder_osm, country, searchparameters, tmp_folder_osm, continentcntry)
-    os.system(cmdstr)
-    os.remove("{}/{}-latest.o5m".format(tmp_folder_osm, country))
-
-    print("\t- Converting to SHP")
-    # Select all line features
-    print("\t\t- Selecting/buffering Features")
-    select_cmd = f'ogr2ogr {tmp_folder_shp}/{continentcntry}_clean.shp {tmp_folder_osm}/{continentcntry}-extract.osm -simplify 0.00006 -dialect sqlite -sql "SELECT geometry FROM \'lines\'"'
-    os.system(select_cmd)
-    os.system(f'rm {tmp_folder_osm}/{continentcntry}-extract.osm')
-    select_cmd = f'ogr2ogr {tmp_folder_shp}/{continentcntry}_buffered.shp {tmp_folder_shp}/{continentcntry}_clean.shp -simplify 0.00006 -dialect sqlite -sql "SELECT ST_Buffer(geometry, {bufferdistance}) AS geometry,* FROM \'{continentcntry}_clean\'"'
-    os.system(select_cmd)
-    os.system(f'rm {tmp_folder_shp}/{continentcntry}_clean.*')
-
-    # Dissolve the buffered features
-    print("\t\t- Dissolving Features")
-    dissolve_cmd = f'ogr2ogr {savepath}/{continentcntry}.shp {tmp_folder_shp}/{continentcntry}_buffered.shp -dialect sqlite -sql "SELECT ST_Union(geometry) AS geometry,* FROM \'{continentcntry}_buffered\'"'
-    os.system(dissolve_cmd)
-    os.system(f'rm {tmp_folder_shp}/{continentcntry}_buffered.*')
-
-def download_country_extents():
-    import csv
-
-    folder_prefix = config.DATA_DIR
-    tmp_folder = TMP_DIR
-
-    with open('{}/GeoData/OSM/osm_all.csv'.format(folder_prefix)) as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=';')
-        next(csv_reader)  # Skipping header line
-        for row in csv_reader:
-            print('Downloading kml for {}'.format(row[0]))
-            if not os.path.isdir(tmp_folder):
-                os.makedirs(tmp_folder)
-
-            wget.download(row[2].replace('-latest.osm.pbf', '.kml'), out='{}/kml'.format(tmp_folder), bar=None)
-
-def download_kml(url, output_path):
-    try:
-        response = requests.get(url)
-        if response.status_code == 200:
-            with open(output_path, 'wb') as f:
-                f.write(response.content)
-            print(f"Downloaded: {output_path}")
-        else:
-            print(f"Failed to download: {url}")
-    except Exception as e:
-        print(f"Error downloading {url}: {e}")
+BUFFER_M = 30           # Radius around each tunnel or bridge line, in metres
+SIMPLIFY_M = 5          # Douglas-Peucker tolerance of the lines, in metres
+ROAD_FILTER = ("(highway LIKE '%ary%' OR highway IN ('unclassified', 'residential', 'living_street', 'pedestrian', "
+               "'road', 'cycleway')) AND (bicycle IS NULL OR bicycle <> 'no')")   # osmfilter: highway=*ary* =... --drop bicycle=no
+TYPE_FILTER = {'tunnels': "tunnel = 'yes'", 'bridges': 'bridge IS NOT NULL'}       # tunnel=yes, bridge=*
+MIN_BRIDGE_M = 25       # The former filter measured 50 m in Web Mercator: true 34 m in Switzerland, 25 m in Sweden
 
 
-def convert_kml_to_shp(kml_file):
-    shp_file = kml_file.replace(".kml", ".shp")
-    ctry_name = os.path.basename(kml_file).replace('.kml', '')
-    ogr_cmd = f'ogr2ogr {shp_file} {kml_file} -makevalid -simplify 0.00006 -dialect sqlite -sql "SELECT geometry FROM \'{ctry_name}\'" > /dev/null 2>&1'
-    os.system(ogr_cmd)
-    return shp_file
+def log(message):
+    print(message, flush=True)
 
 
-def merge_shapefiles(input_folder):
-    shp_files = sorted(glob.glob(os.path.join(input_folder, "*.shp")))
-    grouped_files = {}
-    for shp_file in shp_files:
-        if "_merged" not in os.path.basename(shp_file):
-            filename = os.path.basename(shp_file).split("_")[0]
-            if filename not in grouped_files:
-                grouped_files[filename] = []
-            grouped_files[filename].append(shp_file)
-
-    for filename, files in grouped_files.items():
-        output_merged = os.path.join(input_folder, f"{filename.replace('.shp', '')}_merged.shp")
-
-        # # Create a new shapefile to store the merged geometries
-        # driver = ogr.GetDriverByName('ESRI Shapefile')
-        #
-        # # Get the spatial reference from the first shapefile
-        # dataSource = driver.Open(files[0], 0)
-        # layerIn = dataSource.GetLayer()
-        # spatialRef = layerIn.GetSpatialRef()
-        #
-        # ds = driver.CreateDataSource(output_merged)
-        # layer = ds.CreateLayer('', spatialRef, ogr.wkbPolygon)
-        # layer.CreateField(ogr.FieldDefn('id', ogr.OFTInteger))
-        #
-        # # Merge the geometries
-        # for i, shp_file in enumerate(files):
-        #     dataSource = driver.Open(shp_file, 0)
-        #     layerIn = dataSource.GetLayer()
-        #     for feat in layerIn:
-        #         geom = feat.GetGeometryRef()
-        #         defn = layer.GetLayerDefn()
-        #         feat = ogr.Feature(defn)
-        #         feat.SetField('id', i)
-        #         feat.SetGeometry(geom.Clone())
-        #         layer.CreateFeature(feat)
-        # ds = None
-
-        #cmd = f'ogr2ogr -f "ESRI Shapefile" -a_srs EPSG:4326 -t_srs EPSG:4326 {output_merged} {filename}'
-        print(f'\t- {filename.replace(".shp","").capitalize()}')
-        cmd = f'ogrmerge.py -single -overwrite_ds -o {output_merged} {os.path.join(input_folder,filename.replace(".shp", "")+"*.shp")}'
-        start_time = time.time()
-        os.system(cmd)
-        start_size = utilities.sizeof_fmt(sum(os.path.getsize(fn) for fn in sorted(glob.glob(os.path.join(input_folder,filename.replace(".shp", "")+"*.shp")))))
-        end_size = utilities.sizeof_fmt(sum(os.path.getsize(fn) for fn in sorted(glob.glob(output_merged))))
-        print(f'\t\t- {start_size} --> {end_size}; {time.time()-start_time:0.3f} s')
-
-    #all_files = glob.glob(os.path.join(input_folder, '*'))
-
-    # iterate over all the files
-    #for file in all_files:
-        # if "_merged" not in filename, delete it
-    #    if "_merged" not in os.path.basename(file) and not os.path.isdir(file):
-    #        os.remove(file)
+def osm_config(folder):
+    """GDAL OSM driver configuration with tunnel, bridge and bicycle as columns of the lines layer."""
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, 'osmconf_aeroracle.ini')
+    if not os.path.exists(path):
+        source = subprocess.run(['gdal-config', '--datadir'], capture_output=True, text=True).stdout.strip()
+        text = open(os.path.join(source or '/usr/share/gdal', 'osmconf.ini')).read()
+        i, j = text.index('[lines]'), text.index('[multipolygons]')
+        block = re.sub(r'\nattributes=.*', '\nattributes=name,highway,tunnel,bridge,bicycle', text[i:j])
+        block = re.sub(r'\n(computed_attributes|z_order_type|z_order_sql)=', r'\n#\1=', block)
+        open(path, 'w').write(text[:i] + block + text[j:])
+    return path
 
 
-def outlines_from_kml(csv_path, output_folder):
-    """Build the region outlines (one *_MultiPoly.shp per Geofabrik region) into output_folder, a fresh staging folder.
+def download_pbf(url, folder, retries=5):
+    """The region's .pbf in folder (MD5 checked against Geofabrik's .md5); returns (path, seconds)."""
+    path = os.path.join(folder, os.path.basename(url))
+    started = time.time()
+    for attempt in range(retries):
+        try:
+            with requests.get(url, stream=True, timeout=300) as r:
+                r.raise_for_status()
+                total = int(r.headers.get('content-length', 0))
+                md5, done, shown, t0 = hashlib.md5(), 0, 0.0, time.time()
+                with open(path, 'wb') as f:
+                    for chunk in r.iter_content(1 << 20):
+                        f.write(chunk); md5.update(chunk); done += len(chunk)
+                        if time.time() - shown >= 30:  # Progress every 30 s
+                            shown = time.time()
+                            rate = done / max(shown - t0, 1e-9) / 1e6
+                            left = (total - done) / 1e6 / rate if total and rate else 0
+                            log(f'\t\t[download {os.path.basename(url).replace("-latest.osm.pbf", "")}] '
+                                f'{done / 1e6:.0f} of {total / 1e6:.0f} MB ({done / max(total, 1):.0%}), '
+                                f'{rate:.1f} MB/s, about {left / 60:.0f} min left')
+            expected = requests.get(url + '.md5', timeout=30).text.split()[0]
+            if md5.hexdigest() == expected:
+                return path, time.time() - started
+            log(f'\t\t- MD5 mismatch (attempt {attempt + 1})')
+        except Exception as e:
+            log(f'\t\t- Download failed (attempt {attempt + 1}): {e}')
+        time.sleep(5)
+    raise RuntimeError(f'Download of {url} failed after {retries} attempts')
 
-    The production outlines stay untouched; osm_tunnels_world.py swaps the staging folder in at the end of the update.
+
+def run(cmd):
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f'{cmd[0]} failed: {result.stderr.strip()[-500:]}')
+
+
+def prefilter(pbf, folder):
+    """Ways with tunnel=yes or any bridge tag: one osmium pass; the .pbf itself without osmium."""
+    if not shutil.which('osmium'):
+        return pbf, 0.0
+    out = os.path.join(folder, os.path.basename(pbf).replace('.osm.pbf', '-tb.osm.pbf'))
+    started = time.time()
+    run(['osmium', 'tags-filter', pbf, 'w/tunnel=yes', 'w/bridge', '-o', out, '--overwrite', '--no-progress'])
+    return out, time.time() - started
+
+
+def utm_epsg(lon, lat):
+    """EPSG code of the UTM zone of a point (WGS84)."""
+    return (32600 if lat >= 0 else 32700) + min(int((lon + 180) // 6) + 1, 60)
+
+
+def buffer_metric(lines, kind):
     """
-    import shutil
+    Polygons around the lines, in metres: grouped by UTM zone, simplified by SIMPLIFY_M, bridges at least MIN_BRIDGE_M long,
+    buffered by BUFFER_M, merged per zone, back to WGS84, merged across zone borders, split into single polygons.
+    """
+    import geopandas as gpd
+    import shapely
+    if lines.empty:
+        return gpd.GeoDataFrame(geometry=[], crs='EPSG:4326')
+    points = lines.geometry.representative_point()
+    zones = [utm_epsg(p.x, p.y) for p in points]
+    parts = []
+    for epsg in sorted(set(zones)):
+        group = lines[[z == epsg for z in zones]].to_crs(epsg=epsg)
+        geoms = shapely.simplify(group.geometry.values, SIMPLIFY_M)
+        if kind == 'bridges':
+            geoms = geoms[shapely.length(geoms) >= MIN_BRIDGE_M]
+        if len(geoms):
+            merged = shapely.union_all(shapely.buffer(geoms, BUFFER_M, quad_segs=4))
+            parts.append(gpd.GeoSeries([merged], crs=epsg).to_crs(epsg=4326).iloc[0])
+    merged = shapely.union_all(parts) if parts else shapely.Polygon()
+    polygons = [g for g in shapely.get_parts(merged) if not g.is_empty]
+    return gpd.GeoDataFrame(geometry=polygons, crs='EPSG:4326')
+
+
+def build(source, name, kind, target_dir, tmp, conf):
+    """<target_dir>/<name>.gpkg (layer <kind>): filter (ogr2ogr), then simplify, length, buffer, merge in metres."""
+    import geopandas as gpd
+    work = os.path.join(tmp, f'{name}_{kind}.gpkg')
+    if os.path.exists(work):
+        os.remove(work)
+    times = {}
+    t = time.time()
+    run(['ogr2ogr', '-f', 'GPKG', work, source, 'lines', '-oo', f'CONFIG_FILE={conf}', '-lco', 'GEOMETRY_NAME=geometry',
+         '-nln', 'lines', '-where', f'{ROAD_FILTER} AND {TYPE_FILTER[kind]}'])
+    times['lines'] = time.time() - t
+    t = time.time()
+    polygons = buffer_metric(gpd.read_file(work, layer='lines'), kind)
+    os.makedirs(target_dir, exist_ok=True)
+    target = os.path.join(target_dir, f'{name}.gpkg')
+    if os.path.exists(target):
+        os.remove(target)
+    polygons.to_file(target, layer=kind, driver='GPKG', layer_options={'GEOMETRY_NAME': 'geometry'})
+    times['buffer'] = time.time() - t
+    os.remove(work)
+    return target, times
+
+
+def process_region(pbf, name, folders, tmp):
+    """Tunnels and bridges of one downloaded region into folders {'tunnels': ..., 'bridges': ...}."""
+    conf = osm_config(tmp)
+    source, t_filter = prefilter(pbf, tmp)
+    result = {'filter': t_filter}
+    for kind in ('tunnels', 'bridges'):
+        target, times = build(source, name, kind, folders[kind], tmp, conf)
+        result.update({f'{kind}_{k}': v for k, v in times.items()})
+    if source != pbf:
+        os.remove(source)
+    return result
+
+
+def process_regions(rows, folders, tmp):
+    """
+    All rows (name_descr, name, url): download the next region while the current one is processed.
+    """
+    os.makedirs(tmp, exist_ok=True)
+    slots = threading.Semaphore(2)          # At most two .pbf on disk: one processed, one downloaded
+    ready = queue.Queue()
+
+    def downloader():
+        for row in rows:
+            slots.acquire()
+            try:
+                path, seconds = download_pbf(row[2], tmp)
+                ready.put((row, path, seconds, None))
+            except Exception as e:
+                ready.put((row, None, 0, e))
+        ready.put(None)
+
+    threading.Thread(target=downloader, daemon=True).start()
+    started, done, timings, failed = time.time(), 0, {}, []
+    while (item := ready.get()) is not None:
+        row, path, seconds, error = item
+        done += 1
+        if error:
+            log(f'[{done}/{len(rows)}] {row[0]}: download FAILED ({error})')
+            failed.append(row[1])
+            slots.release()
+            continue
+        t = time.time()
+        try:
+            steps = process_region(path, row[1], folders, tmp)
+            timings[row[1]] = dict(download=seconds, size=os.path.getsize(path), **steps)
+            log(f'[{done}/{len(rows)}] {row[0]}: {os.path.getsize(path) / 1e6:.0f} MB, download {seconds:.0f} s, '
+                f'processing {time.time() - t:.0f} s  [{time.time() - started:.0f} s]')
+        except Exception as e:
+            log(f'[{done}/{len(rows)}] {row[0]}: processing FAILED ({e})')
+            failed.append(row[1])
+        finally:
+            os.remove(path)
+            slots.release()
+    return timings, time.time() - started, failed
+
+
+
+# --- Region outlines ---
+
+def download_kml(url, path):
+    r = requests.get(url, timeout=120)
+    r.raise_for_status()
+    open(path, 'wb').write(r.content)
+
+
+def outline(kml, target):
+    """The region's outline: valid, merged, single polygons (Geofabrik's outlines are coarse: no simplification)."""
+    name = os.path.basename(kml).replace('.kml', '')
+    valid = kml.replace('.kml', '_valid.gpkg')
+    for path in (valid, target):
+        if os.path.exists(path):
+            os.remove(path)
+    run(['ogr2ogr', '-f', 'GPKG', valid, kml, '-makevalid', '-dialect', 'sqlite',
+         '-sql', f"SELECT geometry FROM '{name}'", '-nln', 'outline', '-lco', 'GEOMETRY_NAME=geometry'])
+    run(['ogr2ogr', '-f', 'GPKG', target, valid, '-dialect', 'sqlite', '-nln', 'outline', '-lco', 'GEOMETRY_NAME=geometry',
+         '-sql', 'SELECT ST_Union(ST_Buffer(geometry, 0)) AS geometry FROM outline',
+         '-explodecollections', '-nlt', 'POLYGON', '-a_srs', 'EPSG:4326'])
+    os.remove(valid)
+
+
+def outlines_from_kml(rows, output_folder, tmp):
+    """Outlines of all rows (name_descr, name, url) into output_folder, a fresh staging folder; returns failed regions."""
     if os.path.lexists(output_folder):  # Leftovers of an aborted update
         shutil.rmtree(output_folder)
-    os.makedirs(output_folder)
+    os.makedirs(output_folder); os.makedirs(tmp, exist_ok=True)
+    failed = []
+    for n, row in enumerate(rows, 1):
+        kml = os.path.join(tmp, f'{row[1]}.kml')
+        try:
+            download_kml(row[2].replace('-latest.osm.pbf', '.kml'), kml)
+            outline(kml, os.path.join(output_folder, f'{row[1]}.gpkg'))
+        except Exception as e:
+            log(f'  Outline {row[0]} FAILED ({e})')
+            failed.append(row[1])
+        finally:
+            if os.path.exists(kml):
+                os.remove(kml)
+        if n % 50 == 0 or n == len(rows):
+            log(f'  {n} of {len(rows)} outlines')
+    return failed
 
-    with open(csv_path, 'r') as f:
-        lines = f.readlines()
-        for line in lines[1:]:  # Skip header
-            parts = line.strip().split(";")
-            name_descr, name, url, buffer_distance = parts
-            kml_url = url.replace("-latest.osm.pbf", ".kml")
-            kml_output_path = os.path.join(output_folder, f"{name}.kml")
-            download_kml(kml_url, kml_output_path)
-            shp_file = convert_kml_to_shp(kml_output_path)
-            print(f"Converted {kml_output_path} to {shp_file}")
 
-    merge_shapefiles(output_folder)
-    merged_files = sorted(glob.glob(os.path.join(output_folder, '*_merged.shp')))
-    for file in merged_files:
-        print(f'Dissolving {os.path.basename(file).replace("_merged.shp", "").capitalize()}')
-        # Old version
-        # cmd = f'ogr2ogr {file.replace(".shp", "_dissolved.shp")} {file} -nlt PROMOTE_TO_MULTI -dialect sqlite -sql "SELECT ST_Union(geometry) AS geometry FROM """{os.path.basename(file.replace(".shp", ""))}"""" -f "ESRI Shapefile"'
-        cmd = f'ogr2ogr {file.replace(".shp", "_dissolved.shp")} {file} -nlt PROMOTE_TO_MULTI -dialect sqlite -sql "SELECT ST_Union(ST_Buffer(geometry, 0)) AS geometry FROM """{os.path.basename(file.replace(".shp", ""))}"""" -f "ESRI Shapefile"'
-        os.system(cmd)
+# --- Favourites: checked first by the app (find_osm_country goes through the outlines in name order) ---
 
-    dissolved_files = sorted(glob.glob(os.path.join(output_folder, '*_dissolved.shp')))
-    for file in dissolved_files:
-        print(f'Multipart -> Singleparts ({os.path.basename(file).replace("_merged_dissolved.shp", "").capitalize()})')
-        if multi_to_single(file, file.replace(".shp", "_MultiPoly.shp")) != 0:
-            raise RuntimeError(f'Multipart -> Singleparts failed for {file}')
+FAVOURITES = ['switzerland', 'liechtenstein', 'germany', 'france', 'italy', 'austria', 'spain', 'canaryislands']
 
-    all_files = sorted(glob.glob(os.path.join(output_folder, '*')))
 
-    # iterate over all the files
-    for file in all_files:
-        if "MultiPoly" not in os.path.basename(file) and not os.path.isdir(file):
-            os.remove(file)
-
-    # Favourizing chaecking these outlines first
-    favourites = ['switzerland', 'liechtenstein', 'germany', 'france', 'italy', 'austria', 'spain', 'canaryislands']
-    fav_counter = 0
-    all_files = sorted(glob.glob(os.path.join(output_folder, '*')))
-    for fav in favourites:
-        fav_counter +=1
-        for file in all_files:
-            if fav in file:
-                os.rename(file, file.replace(fav, f'{fav_counter}_{fav}'))
-
-# Old
-# def download_osm_file(url, tmp_folder_osm, country):
-#     if os.path.exists(os.path.join(tmp_folder_osm, f'{country}-latest.o5m')) and time.time()-os.path.getmtime(os.path.join(tmp_folder_osm, f'{country}-latest.o5m')) < 86400: # Check if file older than a day
-#         if os.path.exists(os.path.join(tmp_folder_osm, os.path.basename(url))):
-#             os.system(f'rm {os.path.join(tmp_folder_osm, os.path.basename(url))}') # Original osm.pbf file not necessary any more
-#     else:
-#         if os.path.exists(os.path.join(tmp_folder_osm, os.path.basename(url))) and time.time()-os.path.getmtime(os.path.join(tmp_folder_osm, os.path.basename(url))) < 86400:
-#             pass
-#         else:
-#             if os.path.exists(os.path.join(tmp_folder_osm, os.path.basename(url))):
-#                 os.system(f'rm {os.path.join(tmp_folder_osm, os.path.basename(url))}') # Original osm.pbf file too old: not necessary any more
-#             print("\t- Downloading OSM Data")
-#             start_time = time.time()
-#             wget.download(url, out=tmp_folder_osm, bar=None)
-#             end_time = time.time()
-#             file_size_raw = utilities.sizeof_fmt(os.path.getsize(os.path.join(tmp_folder_osm, os.path.basename(url))))
-#             print(f'\t\t- {file_size_raw} in {end_time - start_time:0.3f} s [{(os.path.getsize(os.path.join(tmp_folder_osm, os.path.basename(url)))/(1024*1024)) / (end_time - start_time):0.3f} MB/s]')
-#         print("\t- Converting OSM Data")
-#         file_size_raw = utilities.sizeof_fmt(os.path.getsize(os.path.join(tmp_folder_osm, os.path.basename(url))))
-#         cmdstr = "osmconvert {}/{}-latest.osm.pbf -o={}/{}-latest.o5m".format(tmp_folder_osm, country, tmp_folder_osm,
-#                                                                               country)
-#         start_time = time.time()
-#         os.system(cmdstr)
-#         file_size_conv = utilities.sizeof_fmt(os.path.getsize(os.path.join(tmp_folder_osm, os.path.basename(url).replace('osm.pbf', 'o5m'))))
-#         print(f'\t\t- {file_size_raw} --> {file_size_conv}; {time.time()-start_time:0.3f} s')
-#         os.remove("{}/{}-latest.osm.pbf".format(tmp_folder_osm, country))
-
-def download_osm_file(url, tmp_folder_osm, country, max_retries=5):
-    import hashlib
-    
-    def calculate_md5(filepath):
-        """Calculate MD5 checksum of a file"""
-        hash_md5 = hashlib.md5()
-        with open(filepath, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
-    
-    def download_with_verification(url, output_path, max_retries=5):
-        """Download file and verify with MD5 checksum"""
-        md5_url = url + ".md5"
-        
-        for attempt in range(max_retries):
-            try:
-                # Download the main file
-                print(f"\t\t- Download attempt {attempt + 1}/{max_retries}")
-                
-                # Use requests instead of wget for better control
-                response = requests.get(url, stream=True, timeout=300)
-                response.raise_for_status()
-                
-                total_size = int(response.headers.get('content-length', 0))
-                
-                with open(output_path, 'wb') as f:
-                    downloaded = 0
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                
-                # Download and check MD5
-                try:
-                    md5_response = requests.get(md5_url, timeout=30)
-                    md5_response.raise_for_status()
-                    expected_md5 = md5_response.text.split()[0]  # Extract MD5 from response
-                    
-                    calculated_md5 = calculate_md5(output_path)
-                    
-                    if calculated_md5 == expected_md5:
-                        print(f"\t\t- MD5 verification passed")
-                        return True
-                    else:
-                        print(f"\t\t- MD5 mismatch: expected {expected_md5}, got {calculated_md5}")
-                        if attempt < max_retries - 1:
-                            os.remove(output_path)
-                            continue
-                        else:
-                            return False
-                            
-                except Exception as e:
-                    print(f"\t\t- Warning: MD5 verification failed ({e}), but file seems complete")
-                    # If MD5 check fails but file size matches, accept it
-                    if total_size > 0 and os.path.getsize(output_path) == total_size:
-                        return True
-                    elif attempt < max_retries - 1:
-                        os.remove(output_path)
-                        continue
-                    else:
-                        return False
-                        
-            except Exception as e:
-                print(f"\t\t- Download failed: {e}")
-                if attempt < max_retries - 1:
-                    if os.path.exists(output_path):
-                        os.remove(output_path)
-                    time.sleep(5)  # Wait before retry
-                    continue
-                else:
-                    return False
-        
-        return False
-    
-    o5m_path = os.path.join(tmp_folder_osm, f'{country}-latest.o5m')
-    pbf_path = os.path.join(tmp_folder_osm, os.path.basename(url))
-    
-    # Check if o5m file exists and is recent (less than 1 day old)
-    if os.path.exists(o5m_path) and time.time() - os.path.getmtime(o5m_path) < 86400:
-        if os.path.exists(pbf_path):
-            os.remove(pbf_path)  # Remove pbf if o5m exists
-        return
-    
-    # Check if pbf file exists and is recent
-    if os.path.exists(pbf_path) and time.time() - os.path.getmtime(pbf_path) < 86400:
-        pass  # Use existing file
-    else:
-        # Remove old pbf file if it exists
-        if os.path.exists(pbf_path):
-            os.remove(pbf_path)
-        
-        # Download new file
-        print("\t- Downloading OSM Data")
-        start_time = time.time()
-        
-        success = download_with_verification(url, pbf_path, max_retries)
-        
-        if not success:
-            raise Exception(f"Failed to download {url} after {max_retries} attempts")
-        
-        end_time = time.time()
-        file_size_raw = utilities.sizeof_fmt(os.path.getsize(pbf_path))
-        download_speed = (os.path.getsize(pbf_path) / (1024 * 1024)) / (end_time - start_time)
-        print(f'\t\t- {file_size_raw} in {end_time - start_time:0.3f} s [{download_speed:0.3f} MB/s]')
-    
-    # Convert to o5m format
-    print("\t- Converting OSM Data")
-    file_size_raw = utilities.sizeof_fmt(os.path.getsize(pbf_path))
-    cmdstr = f"osmconvert {pbf_path} -o={o5m_path}"
-    start_time = time.time()
-    os.system(cmdstr)
-    file_size_conv = utilities.sizeof_fmt(os.path.getsize(o5m_path))
-    print(f'\t\t- {file_size_raw} --> {file_size_conv}; {time.time() - start_time:0.3f} s')
-    os.remove(pbf_path)
-
-def length_filtering(file_path_in, file_path_out, min_length):
-
-    print(f'\t\t- Deleting objects < {min_length} m')
-    start_size = utilities.sizeof_fmt(sum(os.path.getsize(fn) for fn in sorted(glob.glob(file_path_in.replace('shp', '*')))))
-    start_time = time.time()
-    import geopandas as gpd
-    # Read your shapefile (replace 'your_shapefile.shp' with your actual file path)
-    gdf = gpd.read_file(file_path_in)
-
-    gdf_proj = gdf.to_crs(epsg=3857)
-
-    # Calculate the length of each line segment
-    gdf_proj['line_length'] = gdf_proj['geometry'].length
-
-    # Keep only lines longer than or equal to 50 meters
-    gdf = gdf[gdf_proj['line_length'] >= min_length]
-
-    gdf.to_file(file_path_out, driver='ESRI Shapefile')
-    os.system(f'rm {file_path_in.replace("shp","*")}')
-    end_size = utilities.sizeof_fmt(sum(os.path.getsize(fn) for fn in sorted(glob.glob(file_path_out.replace('shp', '*')))))
-    print(f'\t\t\t- {start_size} --> {end_size}; {time.time()-start_time:0.3f} s')
+def prefix_favourites(folder):
+    for n, name in enumerate(FAVOURITES, 1):
+        path = os.path.join(folder, f'{name}.gpkg')
+        if os.path.exists(path):
+            os.rename(path, os.path.join(folder, f'{n}_{name}.gpkg'))

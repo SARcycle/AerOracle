@@ -13,17 +13,6 @@ import rasterio
 import re
 
 
-def tcx_download(parameters):
-    if not check_internet_connection():
-        display_error_message('No internet connection - cannot download file. Exiting.')
-        sys.exit()
-    else:
-        print(f'- Downloading file {os.path.split(parameters.input)[-1]}')
-        cmd_output = os.system(f"wget -O {parameters.input} {parameters.url} >/dev/null 2>&1")
-        if cmd_output!=0:
-            print(f'\t- Download failed. Please check URL entered ({parameters.url}). Exiting.')
-            sys.exit()
-            
 def parse_rwgps_url(url):
     """
     Parse a RideWithGPS route/trip URL into its components.
@@ -181,7 +170,7 @@ def get_version():
     return version_backend, version_frontend
 
 def get_osm_data_date():
-    """Return the OSM data date (YYYY-MM) written by tools/osm/osm_tunnels_world.py, or None if unavailable."""
+    """Return the OSM data date (YYYY-MM) written by tools/osm/update.py, or None if unavailable."""
     import json
     import config
     try:

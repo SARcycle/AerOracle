@@ -42,7 +42,7 @@ Tested on Ubuntu 26.04 with Python 3.14.
    ```sh
    sudo apt install gpsbabel gdal-bin    # GPX/FIT output; Copernicus DEM downloads
    sudo apt install libgdal-dev build-essential python3-dev   # To build Fiona (no ready-made package for Python 3.14 yet)
-   sudo apt install osmctools            # Only for the OSM tools in tools/osm
+   sudo apt install osmium-tool          # Only for the OSM tools in tools/osm
    ```
 2. [uv](https://docs.astral.sh/uv/) and the Python packages:
    ```sh
@@ -161,9 +161,9 @@ GeoData/
 │   └── SRTM3/          N46E008.hgt …                                                      automatic
 ├── Gravimetry/         WGM2012_Freeair_ponc_2min_mgal_Int16_LZW.tif                       manual
 └── OSM/
-    ├── countries/tunnels/   *_MultiPoly.shp     tools/osm/osm_tunnels_world.py
-    ├── countries/bridges/   *_MultiPoly.shp     tools/osm/osm_tunnels_world.py
-    └── outlines/            *_MultiPoly.shp     tools/osm/osm_tunnels_world.py
+    ├── countries/tunnels/   *.gpkg              tools/osm/update.py
+    ├── countries/bridges/   *.gpkg              tools/osm/update.py
+    └── outlines/            *.gpkg              tools/osm/update.py
 ```
 
 Automatic tiles are downloaded the first time a route needs them and kept for later routes.
@@ -183,11 +183,12 @@ Automatic tiles are downloaded the first time a route needs them and kept for la
   the tiles themselves are downloaded automatically from Eurostat GISCO.
 - **WGM2012** gravity: the 2′ free-air anomaly grid of the [World Gravity Map](https://doi.org/10.18168/bgi.23)
   (in mGal), as an Int16 GeoTIFF in EPSG:4326. Its effect on the riding time is small.
-- **OpenStreetMap tunnels and bridges**: `tools/osm/osm_tunnels_world.py` downloads the
+- **OpenStreetMap tunnels and bridges**: `tools/osm/update.py` downloads the
   [Geofabrik](https://download.geofabrik.de/) extracts one at a time (per state or region where Geofabrik offers
   them, otherwise per country), filters tunnels and bridges on roads and cycleways, and buffers them into
-  polygons. It needs the `tools` extra, osmctools and GDAL, and runs for hours. Since each extract is deleted
-  once processed, it needs little temporary space; run it monthly, for example from cron.
+  polygons (GeoPackage, one file per region). It needs the `tools` extra, osmium-tool and GDAL, and may run for
+  hours. The next extract downloads while the current one is processed, and each is deleted once processed, thus only
+  needing little temporary space; run it monthly, for example from cron.
   `tools/osm/osm_manager.sh` shows the status of the OSM data and restores archived versions.
 
 ### Prepared data for download
@@ -197,7 +198,7 @@ The OpenStreetMap tunnels, bridges and country outlines (ODbL), the swissALTI3D 
 [doi:10.5281/zenodo.23802043](https://doi.org/10.5281/zenodo.23802043)
 
 Unzip it into your `data_dir` (e.g. `/data`): the paths inside start with `GeoData/`. This saves the hours of the
-first OSM update; later updates with `tools/osm/osm_tunnels_world.py` build on it. The package's `README.txt`
+first OSM update; later updates with `tools/osm/update.py` build on it. The package's `README.txt`
 lists sources, processing and the required attributions. The optional WGM2012 gravity grid is available from
 its provider (link below).
 
@@ -222,7 +223,7 @@ web app ("Data sources") and must stay visible in any service using the data:
 - **WGM2012**: Bonvalot, S. et al. (2012), World Gravity Map, BGI, CGMW, CNES, IRD,
   [doi:10.18168/bgi.23](https://doi.org/10.18168/bgi.23).
 - **OpenStreetMap**: map tiles and tunnel/bridge data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright),
-  data available under the Open Database License (ODbL). Tunnel and bridge shapefiles you generate are derived
+  data available under the Open Database License (ODbL). Tunnel and bridge files you generate are derived
   databases under the ODbL. The web app's map uses the OpenStreetMap tile servers; heavy use must follow the
   [tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
 - **Example route**: Tour de France 2022, stage 12 (Briançon - Alpe d'Huez), from [RideWithGPS](https://ridewithgps.com/).

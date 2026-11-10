@@ -39,12 +39,12 @@ DATA_SETS = (
     DataSet('SRTM', ('DEM/SRTM3/*.hgt',), 'downloaded when needed', 'no elevation where no other model covers'),
     DataSet('World Gravity Map WGM2012', ('Gravimetry/WGM2012_Freeair_ponc_2min_mgal_Int16_LZW.tif',),
             'manual', 'normal gravity without local anomaly (negligible)'),
-    DataSet('OSM tunnels', ('OSM/countries/tunnels/*_MultiPoly.shp',),
-            'tools/osm/osm_tunnels_world.py', 'no elevation correction in tunnels'),
-    DataSet('OSM bridges', ('OSM/countries/bridges/*_MultiPoly.shp',),
-            'tools/osm/osm_tunnels_world.py', 'no elevation correction on bridges'),
-    DataSet('OSM country outlines', ('OSM/outlines/*_MultiPoly.shp',),
-            'tools/osm/osm_tunnels_world.py', 'no tunnel and bridge corrections'),
+    DataSet('OSM tunnels', ('OSM/countries/tunnels/*.gpkg',),
+            'tools/osm/update.py', 'no elevation correction in tunnels'),
+    DataSet('OSM bridges', ('OSM/countries/bridges/*.gpkg',),
+            'tools/osm/update.py', 'no elevation correction on bridges'),
+    DataSet('OSM country outlines', ('OSM/outlines/*.gpkg',),
+            'tools/osm/update.py', 'no tunnel and bridge corrections'),
 )
 
 # credentials.json entry -> what it is needed for
@@ -59,9 +59,8 @@ CREDENTIALS = {
 PROGRAMS = {
     'gpsbabel': 'GPX and FIT output',
     'gdal_calc.py': 'Copernicus DEM downloads',
-    'osmconvert': 'tools/osm (OSM extracts)',
-    'osmfilter': 'tools/osm (OSM extracts)',
-    'ogr2ogr': 'tools/osm (shapefiles)',
+    'osmium': 'tools/osm (OSM extracts; without it, slower)',
+    'ogr2ogr': 'tools/osm (tunnels, bridges, outlines)',
 }
 
 
