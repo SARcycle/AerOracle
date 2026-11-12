@@ -1,6 +1,6 @@
 [project]
 name = "aeroracle"
-version = "4.5.0"
+version = "4.5.1"
 description = "Cycling aerodynamics calculations and ride time estimations"
 readme = "README.md"
 authors = [
@@ -64,3 +64,7 @@ tools = [
 
 [tool.uv]
 package = false  # Scripts run from the project folder, nothing to build or install
+
+[tool.pyright]
+# Scripts in tools/ import their neighbours (Python adds a script's folder to the path when it runs; editors need it here)
+extraPaths = ["tools/osm", "tools/private", "tools"]

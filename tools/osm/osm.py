@@ -11,8 +11,10 @@ Tunnels and bridges, per Geofabrik region:
    bridges at least MIN_BRIDGE_M long, buffered by BUFFER_M, merged and split into single polygons, reprojection to WGS84.
    Output: <folder>/<name>.gpkg, one layer.
 Outlines: the region's KML, made valid, merged and split into single polygons: <folder>/<name>.gpkg.
+Finally merge_countries puts Geofabrik's sub-regions together, one file per country (germany_bayern + ... -> germany).
 Favourite regions get a number prefix (1_switzerland.gpkg ...): the app checks them first.
 """
+import glob
 import hashlib
 import os
 import queue
@@ -255,6 +257,45 @@ def outlines_from_kml(rows, output_folder, tmp):
         if n % 50 == 0 or n == len(rows):
             log(f'  {n} of {len(rows)} outlines')
     return failed
+
+
+# --- One file per country: Geofabrik's sub-regions (germany_bayern, us_texas ...) merged, as before 4.5.0 ---
+
+def country_of(path):
+    """Country of a region file: germany_bayern.gpkg -> germany, niger.gpkg -> niger (exact, not niger* -> nigeria)."""
+    return os.path.basename(path)[:-len('.gpkg')].split('_')[0]
+
+
+def merge_countries(folder, dissolve=False):
+    """
+    Merge the sub-region files of every country into <country>.gpkg (same layer), then delete them. Tunnels and
+    bridges: polygons put together (overlaps at sub-region borders stay, as before). Outlines (dissolve=True):
+    merged into one area per country and split into single polygons.
+    """
+    import geopandas as gpd
+    import pandas as pd
+    import shapely
+    groups = {}
+    for path in sorted(glob.glob(os.path.join(folder, '*.gpkg'))):
+        groups.setdefault(country_of(path), []).append(path)
+    for country, paths in groups.items():
+        target = os.path.join(folder, f'{country}.gpkg')
+        if paths == [target]:
+            continue
+        layer = gpd.list_layers(paths[0])['name'].iloc[0]
+        parts = [gpd.read_file(p) for p in paths]
+        merged = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs=parts[0].crs)
+        if dissolve and len(merged):
+            union = shapely.union_all(shapely.make_valid(merged.geometry.values))
+            merged = gpd.GeoDataFrame(geometry=[g for g in shapely.get_parts(union) if g.geom_type == 'Polygon'], crs=merged.crs)
+        temporary = target + '.tmp'
+        if os.path.exists(temporary):
+            os.remove(temporary)
+        merged.to_file(temporary, layer=layer, driver='GPKG', layer_options={'GEOMETRY_NAME': 'geometry'})
+        for path in paths:
+            os.remove(path)
+        os.rename(temporary, target)
+    return len(groups)
 
 
 # --- Favourites: checked first by the app (find_osm_country goes through the outlines in name order) ---

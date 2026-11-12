@@ -59,7 +59,7 @@ CREDENTIALS = {
 PROGRAMS = {
     'gpsbabel': 'GPX and FIT output',
     'gdal_calc.py': 'Copernicus DEM downloads',
-    'osmium': 'tools/osm (OSM extracts; without it, slower)',
+    'osmium': 'tools/osm (faster OSM extracts)',
     'ogr2ogr': 'tools/osm (tunnels, bridges, outlines)',
 }
 

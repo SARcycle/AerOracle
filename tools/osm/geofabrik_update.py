@@ -107,15 +107,13 @@ def fetch_and_extract(url, buffer_distance_meter):
     two_level_results = [result for result in all_results if len(result['levels']) == 2]
     three_level_results = [result for result in all_results if len(result['levels']) == 3]
 
-    # Function to filter results based on more specific entries
+    # Drop a region that is split into more specific ones (europe:germany -> europe:germany:bayern ...): only if one of
+    # them lies within it, i.e. its path starts with the region's path (not by name: europe:georgia is a country, not a
+    # parent of north-america:us:georgia)
     def filter_results(results, more_specific_results):
-        to_remove = []
-        for result in results:
-            last_level = result['levels'][-1]
-            # Check if there are more specific results containing the same first level
-            if any(last_level in more_specific['levels'] for more_specific in more_specific_results):
-                to_remove.append(result)
-        return [result for result in results if result not in to_remove]
+        def has_parts(result):
+            return any(more['levels'][:len(result['levels'])] == result['levels'] for more in more_specific_results)
+        return [result for result in results if not has_parts(result)]
 
     # Filter one-level results based on two-level results
     one_level_results = filter_results(one_level_results, two_level_results)

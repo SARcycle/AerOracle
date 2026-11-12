@@ -16,7 +16,6 @@ import time
 import pwd
 import shutil
 import fcntl
-from pathlib import Path
 import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))  # Project root: config, utilities
@@ -190,6 +189,8 @@ try:
             raise Exception(f'{len(failed)} regions failed ({", ".join(sorted(set(failed)))}). Production data kept; run again.')
 
         for staging in (staging_outlines, staging_tunnels, staging_bridges):
+            countries = osm.merge_countries(staging, dissolve=staging == staging_outlines)
+            print(f'{os.path.basename(staging)}: {countries} countries')
             osm.prefix_favourites(staging)
             for path in data_files(staging):
                 fix_ownership(path, target_user)

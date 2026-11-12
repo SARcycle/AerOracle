@@ -34,6 +34,8 @@ It runs as a web app or on the command line, and writes the course back as TCX, 
 - **What-if table**: how much faster or slower ±1% (`whatif_pct` in `config.toml`) in weight, power, CdA or Crr makes you.
 - **Course export**: TCX, GPX and FIT.
 
+How the riding time is calculated, step by step, with the values used, accuracy and limits: [docs/model.md](docs/model.md).
+
 ## Installation
 
 Tested on Ubuntu 26.04 with Python 3.14.
@@ -227,6 +229,27 @@ web app ("Data sources") and must stay visible in any service using the data:
   databases under the ODbL. The web app's map uses the OpenStreetMap tile servers; heavy use must follow the
   [tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
 - **Example route**: Tour de France 2022, stage 12 (Briançon - Alpe d'Huez), from [RideWithGPS](https://ridewithgps.com/).
+
+## Code overview
+
+An analysis runs through these modules in order (`main.py` on the command line, `app.py` in the web app):
+
+| Module | Role |
+|---|---|
+| `parameters.py`, `config.py` | rider settings and options; server settings from `config.toml` |
+| `track.py` | parses the route (GPX, TCX, FIT, RideWithGPS) into points and course points |
+| `assets.py` | runs the preprocessing steps for route, elevation, and gravity |
+| `dem.py` | replace elevation per point from the elevation models, smoothing |
+| `tunnels_bridges.py` | exclude and interpolate elevation in tunnels and bridges (source [OpenStreetMap](https://osm.org)) |
+| `weather/` | forecasts along the route |
+| `speedcalculation.py` | calculates forces, corners, speeds, riding time, power decomposition |
+| `shade.py` | calculates sun and terrain shadow along the route |
+| `utilities.py` | climbs, time zones, file and raster helpers |
+| `tcx_writer.py` | write course files (TCX, GPX, and FIT) |
+| `plot_interactive.py`, `dash_assets/` | map and profile of the web app |
+| `tracker.py`, `dashboard.py` | anonymous usage statistics and their dashboard |
+| `datacheck.py` | `main.py --check-data`: which data and programs are available |
+| `tools/` | data preparation: OSM update (`tools/osm/update.py`), data package |
 
 ## Scientific basis
 
