@@ -233,7 +233,7 @@ try:
                 print(f'Removing old version: {old_dir}')
                 shutil.rmtree(old_dir)
 
-        os.system('rm -rf {}'.format(tmp_folder))
+        shutil.rmtree(tmp_folder, ignore_errors=True)
         os.makedirs(config.INPUT_DIR, exist_ok=True)
         
         print('Update completed successfully!')

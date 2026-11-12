@@ -1,5 +1,7 @@
 import os
+import subprocess
 import urllib.request as urllib
+from urllib.parse import urlparse
 from dataclasses import dataclass
 from multiprocessing.dummy import Pool
 
@@ -12,9 +14,9 @@ import utilities, tunnels_bridges
 
 
 # Values of track.points['dem_source']
-DEM_SOURCES = ['swissALTI3D', 'ALOS AW3D30', 'EU-DEM', 'ASTER GDEM', 'SRTM', 'Copernicus DEM', 'Sonny LiDAR DEM']
+DEM_SOURCES = ['swissALTI3D', 'ALOS AW3D30', 'EU-DEM', 'ASTER GDEM', 'SRTM', 'Copernicus DEM', 'Sonny LiDAR DEM', 'Sea (0 m)']
 DEM_SOURCE = pl.Enum(DEM_SOURCES)
-SWISSALTI3D, ALOS, EUDEM, ASTER, SRTM, COPERNICUS, SONNY = range(len(DEM_SOURCES))
+SWISSALTI3D, ALOS, EUDEM, ASTER, SRTM, COPERNICUS, SONNY, SEA = range(len(DEM_SOURCES))
 
 
 @dataclass(slots=True)
@@ -52,6 +54,7 @@ def addElevationData(parameters, assets):
     EUDEMElevation(parameters, work)
     ASTERDEMElevation(parameters, work)
     SRTMDEMElevation(parameters, work)
+    seaElevation(parameters, work)
 
     track.set(elevation_m=work.elevation)
     track.points = track.points.with_columns(pl.Series(
@@ -60,6 +63,19 @@ def addElevationData(parameters, assets):
     elevation_smoothing(parameters, track)
 
     return assets
+
+
+def seaElevation(parameters, work):
+    """Points no DEM covers: 0 m in open sea (cells without a Copernicus land tile), otherwise stop with a clear error."""
+    if not work.missing().any():
+        return
+    import shade  # Imports dem itself
+    for i, j in {(int(i), int(j)) for i, j in zip(np.floor(work.lat[work.missing()]), np.floor(work.lon[work.missing()]))}:
+        if shade.cell_is_sea(parameters.folder_prefix, i, j):
+            index = work.missing() & work.cell(i, j)
+            work.fill(index, np.zeros(index.sum()), SEA)
+    if work.missing().any():
+        raise Exception(f'No elevation data for {work.missing().mean():.0%} of the route')
 
 
 def lat_lon_prefix(i, j, upper=True):
@@ -149,13 +165,12 @@ def EUDEMElevation(parameters, work):
 
     for i in lat_list:
         for j in lon_list:
-            if in_cell(i, j).any():
-                tile_name = f'{tile_folder}/{tile_id(i, j)}.tif'
-
-                if not os.path.exists(tile_name):
-                    print(f'\t\t\t- Tile {tile_id(i, j)} not available')
-                    continue
-
+            if not in_cell(i, j).any():  # No route point in this cell
+                continue
+            tile_name = f'{tile_folder}/{tile_id(i, j)}.tif'
+            if not os.path.exists(tile_name):
+                print(f'\t\t\t- Tile {tile_id(i, j)} not available')
+                continue
             jndix = indix[in_cell(i, j) & work.missing()[indix]]
             if len(jndix) > 0:
                 work.fill(jndix, utilities.getpixelvalues(work.lat[jndix], work.lon[jndix], tile_name), EUDEM)
@@ -206,13 +221,12 @@ def CopernicusDEMElevation(parameters, work):
 
     for i in lat_list:
         for j in lon_list:
-            if in_cell(i, j).any():
-                tile_name = os.path.join(tile_folder, f'{tile_id(i, j)}_10xInt32.tif')
-
-                if not os.path.exists(tile_name):
-                    print(f'\t\t\t- Tile {os.path.basename(tile_name)} not available')
-                    continue
-
+            if not in_cell(i, j).any():  # No route point in this cell
+                continue
+            tile_name = os.path.join(tile_folder, f'{tile_id(i, j)}_10xInt32.tif')
+            if not os.path.exists(tile_name):
+                print(f'\t\t\t- Tile {os.path.basename(tile_name)} not available')
+                continue
             jndix = indix[in_cell(i, j) & work.missing()[indix]]
             if len(jndix) > 0:
                 work.fill(jndix, utilities.getpixelvalues(work.lat[jndix], work.lon[jndix], tile_name) / 10, # Because Tiles stored as 10xInt32
@@ -422,15 +436,24 @@ def downloadCopernicusDEMtiles(tile_name, save_folder, parameters):
             os.makedirs(parameters.temp_folder)
         except FileExistsError:
             pass
+    source = os.path.join(parameters.temp_folder, save_filename)
+    target = os.path.join(save_folder, save_filename.replace('.tif', '_10xInt32.tif'))
+    partial = target + '.part'  # Renamed only when complete
     try:
-        s3.download_file('copernicus-dem-30m',
-                         f'{tile_name}/{save_filename}',
-                         f'{os.path.join(parameters.temp_folder, save_filename)}', )
-        os.system(f'gdal_calc.py --quiet -A {os.path.join(parameters.temp_folder,save_filename)} --A_band=1 --outfile={os.path.join(save_folder, save_filename.replace(".tif", "_10xInt32.tif"))} --calc="round(A*10)" --NoDataValue -9990 --type Int32 --co COMPRESS=DEFLATE --co PREDICTOR=2 --overwrite')
-        os.remove(os.path.join(parameters.temp_folder,save_filename))
-        return
-    except:
-        return
+        s3.download_file('copernicus-dem-30m', f'{tile_name}/{save_filename}', source)
+        # Elevation x 10 as Int32 (0.1 m steps)
+        subprocess.run(['gdal_calc.py', '--quiet', '-A', source, '--A_band=1', f'--outfile={partial}', '--format=GTiff',
+                        '--calc=round(A*10)', '--NoDataValue=-9990', '--type=Int32',
+                        '--co=COMPRESS=DEFLATE', '--co=PREDICTOR=2', '--overwrite'], check=True, capture_output=True, text=True)
+        os.replace(partial, target)
+    except subprocess.CalledProcessError as e:
+        print(f'\t- Copernicus tile {tile_name}: conversion failed ({e.stderr.strip()[-200:]})')
+    except Exception:
+        pass  # No tile (open sea) or download failed: the next elevation model fills in
+    finally:
+        for path in (source, partial):
+            if os.path.exists(path):
+                os.remove(path)
 
 
 def wgs84_to_lv95(lat, lon):
@@ -499,8 +522,8 @@ class SessionWithHeaderRedirection(requests.Session):
         url = prepared_request.url
 
         if 'Authorization' in headers:
-            original_parsed = requests.utils.urlparse(response.request.url)
-            redirect_parsed = requests.utils.urlparse(url)
+            original_parsed = urlparse(response.request.url)
+            redirect_parsed = urlparse(url)
             if (
                     original_parsed.hostname != redirect_parsed.hostname) and redirect_parsed.hostname != self.AUTH_HOST and original_parsed.hostname != self.AUTH_HOST:
                 del headers['Authorization']

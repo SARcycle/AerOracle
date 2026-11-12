@@ -58,8 +58,12 @@ def osm_config(folder):
     return path
 
 
-def download_pbf(url, folder, retries=5):
-    """The region's .pbf in folder (MD5 checked against Geofabrik's .md5); returns (path, seconds)."""
+def download_pbf(url, folder, label=None, retries=5):
+    """
+    The region's .pbf in folder (MD5 checked against Geofabrik's .md5); returns (path, seconds).
+    label: prefix of the progress lines, e.g. '[286/444] Norway (Trondelag)' (default: the file name).
+    """
+    label = label or os.path.basename(url).replace('-latest.osm.pbf', '')
     path = os.path.join(folder, os.path.basename(url))
     started = time.time()
     for attempt in range(retries):
@@ -67,7 +71,8 @@ def download_pbf(url, folder, retries=5):
             with requests.get(url, stream=True, timeout=300) as r:
                 r.raise_for_status()
                 total = int(r.headers.get('content-length', 0))
-                md5, done, shown, t0 = hashlib.md5(), 0, 0.0, time.time()
+                md5, done, t0 = hashlib.md5(), 0, time.time()
+                shown = t0  # First progress line after 30 s
                 with open(path, 'wb') as f:
                     for chunk in r.iter_content(1 << 20):
                         f.write(chunk); md5.update(chunk); done += len(chunk)
@@ -75,15 +80,14 @@ def download_pbf(url, folder, retries=5):
                             shown = time.time()
                             rate = done / max(shown - t0, 1e-9) / 1e6
                             left = (total - done) / 1e6 / rate if total and rate else 0
-                            log(f'\t\t[download {os.path.basename(url).replace("-latest.osm.pbf", "")}] '
-                                f'{done / 1e6:.0f} of {total / 1e6:.0f} MB ({done / max(total, 1):.0%}), '
+                            log(f'  {label}: downloading, {done / 1e6:.0f} of {total / 1e6:.0f} MB ({done / max(total, 1):.0%}), '
                                 f'{rate:.1f} MB/s, about {left / 60:.0f} min left')
             expected = requests.get(url + '.md5', timeout=30).text.split()[0]
             if md5.hexdigest() == expected:
                 return path, time.time() - started
-            log(f'\t\t- MD5 mismatch (attempt {attempt + 1})')
+            log(f'  {label}: MD5 mismatch (attempt {attempt + 1})')
         except Exception as e:
-            log(f'\t\t- Download failed (attempt {attempt + 1}): {e}')
+            log(f'  {label}: download failed (attempt {attempt + 1}): {e}')
         time.sleep(5)
     raise RuntimeError(f'Download of {url} failed after {retries} attempts')
 
@@ -179,10 +183,10 @@ def process_regions(rows, folders, tmp):
     ready = queue.Queue()
 
     def downloader():
-        for row in rows:
+        for n, row in enumerate(rows, 1):
             slots.acquire()
             try:
-                path, seconds = download_pbf(row[2], tmp)
+                path, seconds = download_pbf(row[2], tmp, label=f'[{n}/{len(rows)}] {row[0]}')
                 ready.put((row, path, seconds, None))
             except Exception as e:
                 ready.put((row, None, 0, e))
