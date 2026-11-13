@@ -78,8 +78,8 @@ cmd_status() {
     echo "Current Versions:"
 
     # Outlines (in $BASE_PATH; a plain folder until the first update that versions them)
-    if [ -L "$BASE_PATH/outlines" ]; then
-        OUTLINE_TARGET=$(readlink "$BASE_PATH/outlines")
+    if [ -L "$COUNTRIES_PATH/outlines" ]; then
+        OUTLINE_TARGET=$(readlink "$COUNTRIES_PATH/outlines")
         echo -e "  Outlines: ${GREEN}$OUTLINE_TARGET${NC}"
 
         if [ -d "$BASE_PATH/$OUTLINE_TARGET" ]; then
@@ -88,7 +88,7 @@ cmd_status() {
             echo "    Files: $FILE_COUNT files"
             echo "    Size: $TOTAL_SIZE"
         fi
-    elif [ -d "$BASE_PATH/outlines" ]; then
+    elif [ -d "$COUNTRIES_PATH/outlines" ]; then
         echo "  Outlines: plain folder (versioned at the next update)"
     else
         print_error "Outlines missing"
@@ -126,7 +126,7 @@ cmd_status() {
     
     echo ""
     echo "Available Versions:"
-    for dir in $(ls -dt "$COUNTRIES_PATH"/*_v* 2>/dev/null | head -5); do
+    for dir in $(ls -dt "$COUNTRIES_PATH"/tunnels_v* "$COUNTRIES_PATH"/bridges_v* 2>/dev/null | head -5); do
         DIRNAME=$(basename "$dir")
         SIZE=$(du -sh "$dir" | cut -f1)
         if [ -L "$COUNTRIES_PATH/tunnels" ] && [ "$(readlink "$COUNTRIES_PATH/tunnels")" = "$DIRNAME" ]; then
@@ -137,10 +137,10 @@ cmd_status() {
             echo "    $DIRNAME ($SIZE)"
         fi
     done
-    for dir in $(ls -dt "$BASE_PATH"/outlines_v* 2>/dev/null | head -3); do
+    for dir in $(ls -dt "$COUNTRIES_PATH"/outlines_v* 2>/dev/null | head -3); do
         DIRNAME=$(basename "$dir")
         SIZE=$(du -sh "$dir" | cut -f1)
-        if [ -L "$BASE_PATH/outlines" ] && [ "$(readlink "$BASE_PATH/outlines")" = "$DIRNAME" ]; then
+        if [ -L "$COUNTRIES_PATH/outlines" ] && [ "$(readlink "$COUNTRIES_PATH/outlines")" = "$DIRNAME" ]; then
             echo -e "  ${GREEN}-> $DIRNAME${NC} ($SIZE) [CURRENT]"
         else
             echo "    $DIRNAME ($SIZE)"
@@ -174,7 +174,7 @@ cmd_status() {
 cmd_list_versions() {
     print_header "All Available Versions"
     
-    for dir in $(ls -dt "$COUNTRIES_PATH"/*_v* "$BASE_PATH"/outlines_v* 2>/dev/null); do
+    for dir in $(ls -dt "$COUNTRIES_PATH"/*_v* 2>/dev/null); do
         DIRNAME=$(basename "$dir")
         SIZE=$(du -sh "$dir" | cut -f1)
         FILE_COUNT=$(find "$dir" \( -name "*.gpkg" -o -name "*_MultiPoly.shp" \) 2>/dev/null | wc -l)
@@ -184,7 +184,7 @@ cmd_list_versions() {
             echo -e "${GREEN}-> $DIRNAME${NC}"
         elif [ -L "$COUNTRIES_PATH/bridges" ] && [ "$(readlink "$COUNTRIES_PATH/bridges")" = "$DIRNAME" ]; then
             echo -e "${GREEN}-> $DIRNAME${NC}"
-        elif [ -L "$BASE_PATH/outlines" ] && [ "$(readlink "$BASE_PATH/outlines")" = "$DIRNAME" ]; then
+        elif [ -L "$COUNTRIES_PATH/outlines" ] && [ "$(readlink "$COUNTRIES_PATH/outlines")" = "$DIRNAME" ]; then
             echo -e "${GREEN}-> $DIRNAME${NC}"
         else
             echo "  $DIRNAME"
@@ -207,8 +207,8 @@ cmd_rollback() {
     
     PREV_TUNNEL=$(ls -dt "$COUNTRIES_PATH"/tunnels_v* 2>/dev/null | grep -v "$CURRENT_TUNNEL" | head -1)
     PREV_BRIDGE=$(ls -dt "$COUNTRIES_PATH"/bridges_v* 2>/dev/null | grep -v "$CURRENT_BRIDGE" | head -1)
-    CURRENT_OUTLINE=$(readlink "$BASE_PATH/outlines" 2>/dev/null || echo "")
-    PREV_OUTLINE=$(ls -dt "$BASE_PATH"/outlines_v* 2>/dev/null | grep -v "${CURRENT_OUTLINE:-^$}" | head -1 || true)
+    CURRENT_OUTLINE=$(readlink "$COUNTRIES_PATH/outlines" 2>/dev/null || echo "")
+    PREV_OUTLINE=$(ls -dt "$COUNTRIES_PATH"/outlines_v* 2>/dev/null | grep -v "${CURRENT_OUTLINE:-^$}" | head -1 || true)
 
     if [ -z "$PREV_TUNNEL" ] || [ -z "$PREV_BRIDGE" ]; then
         print_error "No previous version found"
@@ -237,14 +237,14 @@ cmd_rollback() {
     
     swap_link "$(basename $PREV_TUNNEL)" "$COUNTRIES_PATH/tunnels"
     swap_link "$(basename $PREV_BRIDGE)" "$COUNTRIES_PATH/bridges"
-    if [ -n "$PREV_OUTLINE" ] && [ -L "$BASE_PATH/outlines" ]; then
-        swap_link "$(basename $PREV_OUTLINE)" "$BASE_PATH/outlines"
+    if [ -n "$PREV_OUTLINE" ] && [ -L "$COUNTRIES_PATH/outlines" ]; then
+        swap_link "$(basename $PREV_OUTLINE)" "$COUNTRIES_PATH/outlines"
     fi
 
     print_success "Rollback completed"
     print_success "Tunnels: $(readlink $COUNTRIES_PATH/tunnels)"
     print_success "Bridges: $(readlink $COUNTRIES_PATH/bridges)"
-    print_success "Outlines: $(readlink $BASE_PATH/outlines 2>/dev/null || echo 'plain folder')"
+    print_success "Outlines: $(readlink $COUNTRIES_PATH/outlines 2>/dev/null || echo 'plain folder')"
 }
 
 # Command: clean-stale-lock
@@ -324,7 +324,7 @@ cmd_cleanup() {
     # Outlines
     echo ""
     echo "Outline versions:"
-    OUTLINE_VERSIONS=($(ls -dt "$BASE_PATH"/outlines_v* 2>/dev/null))
+    OUTLINE_VERSIONS=($(ls -dt "$COUNTRIES_PATH"/outlines_v* 2>/dev/null))
     OUTLINE_COUNT=${#OUTLINE_VERSIONS[@]}
 
     if [ $OUTLINE_COUNT -gt $KEEP_VERSIONS ]; then
@@ -417,7 +417,7 @@ cmd_restore() {
     echo "Extracting bridges..."
     extract_flat "$LATEST_BRIDGE" "$RESTORE_BRIDGE"
 
-    RESTORE_OUTLINE="$BASE_PATH/outlines_v$TIMESTAMP"
+    RESTORE_OUTLINE="$COUNTRIES_PATH/outlines_v$TIMESTAMP"
     LATEST_OUTLINE=$(ls -t "$ARCHIVE_PATH/outlines"/*.zip 2>/dev/null | head -1 || true)
     if [ -n "$LATEST_OUTLINE" ]; then
         echo "Extracting outlines..."
@@ -436,8 +436,8 @@ cmd_restore() {
     if [ "$CONFIRM" = "yes" ]; then
         swap_link "$(basename $RESTORE_TUNNEL)" "$COUNTRIES_PATH/tunnels"
         swap_link "$(basename $RESTORE_BRIDGE)" "$COUNTRIES_PATH/bridges"
-        if [ -n "$LATEST_OUTLINE" ] && [ -L "$BASE_PATH/outlines" ]; then
-            swap_link "$(basename $RESTORE_OUTLINE)" "$BASE_PATH/outlines"
+        if [ -n "$LATEST_OUTLINE" ] && [ -L "$COUNTRIES_PATH/outlines" ]; then
+            swap_link "$(basename $RESTORE_OUTLINE)" "$COUNTRIES_PATH/outlines"
         elif [ -n "$LATEST_OUTLINE" ]; then
             print_warning "Outlines are a plain folder: restored to $(basename $RESTORE_OUTLINE), not activated"
         fi
@@ -446,7 +446,7 @@ cmd_restore() {
         echo "Restored but not activated. You can manually activate with:"
         echo "  ln -sfn $(basename $RESTORE_TUNNEL) $COUNTRIES_PATH/tunnels"
         echo "  ln -sfn $(basename $RESTORE_BRIDGE) $COUNTRIES_PATH/bridges"
-        if [ -n "$LATEST_OUTLINE" ]; then echo "  ln -sfn $(basename $RESTORE_OUTLINE) $BASE_PATH/outlines"; fi
+        if [ -n "$LATEST_OUTLINE" ]; then echo "  ln -sfn $(basename $RESTORE_OUTLINE) $COUNTRIES_PATH/outlines"; fi
     fi
 }
 
@@ -484,15 +484,15 @@ cmd_verify() {
         ERRORS=$((ERRORS + 1))
     fi
 
-    if [ -L "$BASE_PATH/outlines" ]; then
-        TARGET=$(readlink "$BASE_PATH/outlines")
+    if [ -L "$COUNTRIES_PATH/outlines" ]; then
+        TARGET=$(readlink "$COUNTRIES_PATH/outlines")
         if [ -d "$BASE_PATH/$TARGET" ]; then
             print_success "Outlines symlink OK -> $TARGET"
         else
             print_error "Outlines symlink broken -> $TARGET (does not exist)"
             ERRORS=$((ERRORS + 1))
         fi
-    elif [ -d "$BASE_PATH/outlines" ]; then
+    elif [ -d "$COUNTRIES_PATH/outlines" ]; then
         print_warning "Outlines is a plain folder (versioned at the next update)"
     else
         print_error "Outlines missing"
@@ -504,7 +504,7 @@ cmd_verify() {
     echo "Checking data files..."
     TUNNEL_FILES=$(find "$(readlink -f $COUNTRIES_PATH/tunnels 2>/dev/null || echo /nonexistent)" \( -name "*.gpkg" -o -name "*_MultiPoly.shp" \) 2>/dev/null | wc -l)
     BRIDGE_FILES=$(find "$(readlink -f $COUNTRIES_PATH/bridges 2>/dev/null || echo /nonexistent)" \( -name "*.gpkg" -o -name "*_MultiPoly.shp" \) 2>/dev/null | wc -l)
-    OUTLINE_FILES=$(find "$(readlink -f $BASE_PATH/outlines 2>/dev/null || echo /nonexistent)" -maxdepth 1 \( -name "*.gpkg" -o -name "*_MultiPoly.shp" \) 2>/dev/null | wc -l)
+    OUTLINE_FILES=$(find "$(readlink -f $COUNTRIES_PATH/outlines 2>/dev/null || echo /nonexistent)" -maxdepth 1 \( -name "*.gpkg" -o -name "*_MultiPoly.shp" \) 2>/dev/null | wc -l)
 
     if [ $TUNNEL_FILES -gt 0 ]; then
         print_success "Tunnel files OK ($TUNNEL_FILES files)"

@@ -31,6 +31,9 @@ class WeatherProvider(StrEnum):
 
 
 class Parameters:
+    terrain_shadow: bool = True     # Web app: opt-in switch
+    weather_file: str | None = None # Stored weather instead of API calls (web app's example route)
+
     def __init__(self, argv: list[str] | None = None):
         """Parse the command line, or argv if given (e.g. by the web app)."""
         self.args = self.parse_parameters(argv)
@@ -70,24 +73,24 @@ class Parameters:
         parse.add_argument('--check-data', action='store_true', help='Report the available data sets, credentials and programs, then exit')
 
         args = parse.parse_args(argv)
-        self.__setattr__('input', args.input)
-        self.__setattr__('power', args.power)
-        self.__setattr__('weight', args.weight)
-        self.__setattr__('time', args.time)
-        self.__setattr__('quiet', args.quiet)
-        self.__setattr__('output', args.output)
-        self.__setattr__('url', args.url)
-        self.__setattr__('tt', args.tt)
-        self.__setattr__('crr', args.crr)
-        self.__setattr__('cda', args.cda)
-        self.__setattr__('powerfactor', args.powerfactor)
-        self.__setattr__('gradient_threshold', abs(args.gradient))
-        self.__setattr__('weather', args.weather)
-        self.__setattr__('dem', [])
-        self.__setattr__('climbs', args.climbs)
-        self.__setattr__('cornering', args.cornering)
-        self.__setattr__('check_data', args.check_data)
-        self.__setattr__('whatif_pct', abs(args.whatif))
+        self.input = args.input
+        self.power = args.power
+        self.weight = args.weight
+        self.time = args.time
+        self.quiet = args.quiet
+        self.output = args.output
+        self.url = args.url
+        self.tt = args.tt
+        self.crr = args.crr
+        self.cda = args.cda
+        self.powerfactor = args.powerfactor
+        self.gradient_threshold = abs(args.gradient)
+        self.weather = args.weather
+        self.dem = []
+        self.climbs = args.climbs
+        self.cornering = args.cornering
+        self.check_data = args.check_data
+        self.whatif_pct = abs(args.whatif)
 
     def check_parameters(self):
         if self.input is None:

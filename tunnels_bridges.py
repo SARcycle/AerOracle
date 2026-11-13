@@ -114,7 +114,7 @@ def outline_bounds(outline_path, folder_mtime) -> dict:
 def find_osm_country(parameters, assets):
     lat, lon = assets.track['lat'][0::5], assets.track['lon'][0::5]
 
-    outline_path = os.path.join(parameters.folder_prefix, "GeoData/OSM/outlines")
+    outline_path = os.path.join(parameters.folder_prefix, "GeoData/OSM/countries/outlines")
 
     outline_path = os.path.realpath(outline_path)  # Version folder behind the symlink
 

@@ -167,8 +167,8 @@ try:
 
         # Staging folders: production stays untouched until the swap at the end
         savepath = os.path.join(base_path, 'countries')
-        staging_outlines = os.path.join(base_path, 'outlines_staging')
-        production_outlines = os.path.join(base_path, 'outlines')
+        staging_outlines = os.path.join(savepath, 'outlines_staging')
+        production_outlines = os.path.join(savepath, 'outlines')
         staging_tunnels = os.path.join(savepath, 'tunnels_staging')
         staging_bridges = os.path.join(savepath, 'bridges_staging')
         production_tunnels = os.path.join(savepath, 'tunnels')

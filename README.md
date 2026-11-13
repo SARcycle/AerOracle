@@ -163,9 +163,9 @@ GeoData/
 │   └── SRTM3/          N46E008.hgt …                                                      automatic
 ├── Gravimetry/         WGM2012_Freeair_ponc_2min_mgal_Int16_LZW.tif                       manual
 └── OSM/
+    ├── countries/outlines/  *.gpkg              tools/osm/update.py
     ├── countries/tunnels/   *.gpkg              tools/osm/update.py
-    ├── countries/bridges/   *.gpkg              tools/osm/update.py
-    └── outlines/            *.gpkg              tools/osm/update.py
+    └── countries/bridges/   *.gpkg              tools/osm/update.py
 ```
 
 Automatic tiles are downloaded the first time a route needs them and kept for later routes.

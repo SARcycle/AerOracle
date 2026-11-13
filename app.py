@@ -438,7 +438,7 @@ def gradient_scale_legend():
 
 
 def card(title, children, hint=None, head_extra=None, body_class='ao-card-body'):
-    head = [html.H2(title)]
+    head: list = [html.H2(title)]
     if hint or head_extra:
         head.append(html.Div([html.Span(hint, className='ao-hint') if hint else None, head_extra],
                              style={'display': 'flex', 'gap': '12px', 'alignItems': 'center', 'flexWrap': 'wrap'}))
@@ -776,7 +776,7 @@ def rail():
             dbc.Switch(id='weather-on', label="Weather forecast", value=False),
             html.Div(id='start-time-section', hidden=True, children=[html.Div([
                 field("Start date", dcc.DatePickerSingle(
-                    id='start-date', date=today, min_date_allowed=date(2000, 1, 1), max_date_allowed=today + timedelta(days=7),
+                    id='start-date', date=today.isoformat(), min_date_allowed='2000-01-01', max_date_allowed=(today + timedelta(days=7)).isoformat(),
                     display_format='YYYY-MM-DD', first_day_of_week=1)),  # Monday (browsers expose only the language, not the regional format)
                 field("Local start time (24 h)", dbc.Input(id='start-time', type='text', placeholder='HH:MM', size='sm'), 'start-time'),  # A native time input follows the browser language
             ], className='ao-fields two'),
@@ -860,8 +860,8 @@ def parse_settings_link(search):
             start_date = date.fromisoformat(query['date'])
         except ValueError:
             start_date = None
-        if take('date', start_date if start_date and date(2000, 1, 1) <= start_date <= date.today() + timedelta(days=7) else None):
-            values['start-date'] = start_date.isoformat()
+        if valid_date := take('date', start_date if start_date and date(2000, 1, 1) <= start_date <= date.today() + timedelta(days=7) else None):
+            values['start-date'] = valid_date.isoformat()
     if ('start-time' in values or 'start-date' in values) and 'weather-on' not in values:
         values['weather-on'] = True  # A start time is only of use with the weather forecast
     route = urlparse(query.get('route', ''))
@@ -944,7 +944,7 @@ def warm_up():
     try:
         import astral.sun, fiona, shapely, srtm, statsmodels.api  # noqa: F401
         utilities.timezone_finder()
-        outlines = Path(config.DATA_DIR or '') / 'GeoData' / 'OSM' / 'outlines'
+        outlines = Path(config.DATA_DIR or '') / 'GeoData' / 'OSM' / 'countries' / 'outlines'
         if config.DATA_DIR and outlines.exists():
             folder = os.path.realpath(outlines)  # The same key as in tunnels_bridges.find_osm_country
             tunnels_bridges.outline_bounds(folder, os.stat(folder).st_mtime)
@@ -1131,9 +1131,10 @@ def analysis_outputs(example, input_method, upload_contents, upload_filename, ur
 
     start = None
     if weather_on:
-        if not start_date or parse_time(start_time) is None:
+        clock = parse_time(start_time)
+        if not start_date or clock is None:
             return error("Please enter the start date and time (24 h, HH:MM) for the weather forecast.")
-        start = datetime.combine(date.fromisoformat(start_date), parse_time(start_time))  # Local time at the route start
+        start = datetime.combine(date.fromisoformat(start_date), clock)  # Local time at the route start
 
     power_flat, power_up, power_down = (round(power) for power in (power_flat, power_up, power_down))  # Whole watts
     settings = dict(power_flat=power_flat, power_up=power_up, power_down=power_down, weight=weight,

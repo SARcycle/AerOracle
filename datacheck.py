@@ -43,7 +43,7 @@ DATA_SETS = (
             'tools/osm/update.py', 'no elevation correction in tunnels'),
     DataSet('OSM bridges', ('OSM/countries/bridges/*.gpkg',),
             'tools/osm/update.py', 'no elevation correction on bridges'),
-    DataSet('OSM country outlines', ('OSM/outlines/*.gpkg',),
+    DataSet('OSM country outlines', ('OSM/countries/outlines/*.gpkg',),
             'tools/osm/update.py', 'no tunnel and bridge corrections'),
 )
 
