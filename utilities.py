@@ -716,12 +716,10 @@ def read_shapes(shapefile_path, bbox=None) -> list:
     With bbox (see bounding_box), only those whose envelope intersects it: a point can only lie within a geometry
     that intersects the bounding box of the points, so point tests give the same result, many times faster.
     """
-    import fiona
+    import pyogrio.raw
     import shapely
-    from shapely.geometry import shape
-    with fiona.open(str(shapefile_path)) as source:
-        features = source.filter(bbox=bbox) if bbox is not None else source
-        geometries = [shape(feature['geometry']) for feature in features if feature['geometry'] is not None]
+    _, _, wkb, _ = pyogrio.raw.read(str(shapefile_path), bbox=bbox, columns=[])  # Geometries only, as WKB
+    geometries = shapely.from_wkb([g for g in wkb if g is not None])  # Features without geometry left out
     return list(shapely.get_parts(geometries))
 
 def _points_within(lat, lon, shapes):

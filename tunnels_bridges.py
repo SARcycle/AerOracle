@@ -100,12 +100,11 @@ def outline_bounds(outline_path, folder_mtime) -> dict:
     Bounds (min lon, min lat, max lon, max lat) of every outline file, read once per process. Cached per folder
     and its modification time (-> update safe).
     """
-    import fiona
+    import pyogrio
     bounds = {}
     for path in osm_files(outline_path):
         try:
-            with fiona.open(path) as source:
-                bounds[path] = tuple(source.bounds)
+            bounds[path] = tuple(float(v) for v in pyogrio.read_info(path)['total_bounds'])
         except Exception:
             pass  # Unreadable: no bounds, so it is opened as before
     return bounds

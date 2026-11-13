@@ -29,7 +29,7 @@ DATA_SETS = (
             ('DEM/SonnyDEM/SonnyDEM_Tiles_Outline_Singlepart.shp', 'DEM/SonnyDEM/*.tif'),
             'manual', 'other elevation models used'),
     DataSet('Copernicus DEM GLO-30', ('DEM/CopernicusDEM/*_10xInt32.tif',),
-            'downloaded when needed (needs gdal_calc.py)', 'ALOS, EU-DEM, ASTER or SRTM used'),
+            'downloaded when needed', 'ALOS, EU-DEM, ASTER or SRTM used'),
     DataSet('ALOS AW3D30', ('DEM/ALOS/ALPSMLC30_*_DSM.tif',),
             'downloaded when needed', 'EU-DEM, ASTER or SRTM used'),
     DataSet('EU-DEM outline', ('DEM/EUDEM/EUDEM_Boundaries_Singleparts.shp',),
@@ -58,7 +58,6 @@ CREDENTIALS = {
 # External program -> what it is needed for
 PROGRAMS = {
     'gpsbabel': 'GPX and FIT output',
-    'gdal_calc.py': 'Copernicus DEM downloads',
     'osmium': 'tools/osm (faster OSM extracts)',
     'ogr2ogr': 'tools/osm (tunnels, bridges, outlines)',
 }

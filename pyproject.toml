@@ -1,6 +1,6 @@
 [project]
 name = "aeroracle"
-version = "4.5.3"
+version = "4.5.4"
 description = "Cycling aerodynamics calculations and ride time estimations"
 readme = "README.md"
 authors = [
@@ -12,7 +12,6 @@ license-files = ["LICENSE", "NOTICE"]
 dependencies = [
     "astral>=3.2",
     "boto3>=1.43.118",
-    "fiona>=1.10.1",
     "fitparse>=1.2.0",
     "matplotlib>=3.11.2",
     "numpy>=2.5.4",
@@ -20,6 +19,7 @@ dependencies = [
     "openmeteo-sdk>=1.29.0",
     "polars>=2.0.0,<3",
     "pyproj>=3.8.0",
+    "pyogrio>=0.13.0",
     "python-dateutil>=2.9.0",
     "rasterio>=1.5.2",
     "requests>=2.34.2",

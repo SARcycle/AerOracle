@@ -1,5 +1,4 @@
 import os
-import subprocess
 import urllib.request as urllib
 from urllib.parse import urlparse
 from dataclasses import dataclass
@@ -441,19 +440,37 @@ def downloadCopernicusDEMtiles(tile_name, save_folder, parameters):
     partial = target + '.part'  # Renamed only when complete
     try:
         s3.download_file('copernicus-dem-30m', f'{tile_name}/{save_filename}', source)
-        # Elevation x 10 as Int32 (0.1 m steps)
-        subprocess.run(['gdal_calc.py', '--quiet', '-A', source, '--A_band=1', f'--outfile={partial}', '--format=GTiff',
-                        '--calc=round(A*10)', '--NoDataValue=-9990', '--type=Int32',
-                        '--co=COMPRESS=DEFLATE', '--co=PREDICTOR=2', '--overwrite'], check=True, capture_output=True, text=True)
+        try:
+            to_10x_int32(source, partial)
+        except Exception as e:
+            print(f'\t- Copernicus tile {tile_name}: conversion failed ({e})')
+            raise
         os.replace(partial, target)
-    except subprocess.CalledProcessError as e:
-        print(f'\t- Copernicus tile {tile_name}: conversion failed ({e.stderr.strip()[-200:]})')
     except Exception:
         pass  # No tile (open sea) or download failed: the next elevation model fills in
     finally:
         for path in (source, partial):
             if os.path.exists(path):
                 os.remove(path)
+
+
+COPERNICUS_NODATA = -9990  # No-data value of the 10x tiles
+
+
+def to_10x_int32(source, target):
+    """
+    Elevation x 10 as Int32 (0.1 m steps), DEFLATE: about half the size of Float32.
+    The same file as gdal_calc.py --calc=round(A*10) --type=Int32 --NoDataValue=-9990 (striped GeoTIFF).
+    """
+    import rasterio
+    with rasterio.open(source) as src:
+        values = src.read(1, masked=True)  # No-data pixels of the source (if any) stay no-data
+        profile = {key: src.profile[key] for key in ('width', 'height', 'crs', 'transform')}
+    profile.update(driver='GTiff', count=1, dtype='int32', nodata=COPERNICUS_NODATA, compress='deflate', predictor=2)
+    tenfold = np.round(values.astype(np.float32) * np.float32(10))  # In Float32 as gdal_calc.py: identical rounding
+    data = tenfold.filled(COPERNICUS_NODATA).astype(np.int32)
+    with rasterio.open(target, 'w', **profile) as dst:
+        dst.write(data, 1)
 
 
 def wgs84_to_lv95(lat, lon):

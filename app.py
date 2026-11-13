@@ -942,7 +942,7 @@ def warm_up():
     """
     start = time.time()
     try:
-        import astral.sun, fiona, shapely, srtm, statsmodels.api  # noqa: F401
+        import astral.sun, pyogrio.raw, shapely, srtm, statsmodels.api  # noqa: F401
         utilities.timezone_finder()
         outlines = Path(config.DATA_DIR or '') / 'GeoData' / 'OSM' / 'countries' / 'outlines'
         if config.DATA_DIR and outlines.exists():
