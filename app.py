@@ -602,8 +602,8 @@ def results_layout(key, args, data, settings, theme='light'):
         computer_field("Average speed", f"{distance_km[-1] / ride_s * 3600:.2f}", "km/h"),
         computer_field("Ascent", f"+{ascent:.0f}", "m"),  # Highest point and finish elevation: see the profile
         computer_field("Descent", f"−{descent:.0f}", "m"),
-        computer_field("Normalized power", f"{args.power_out.normalized_w:.0f}", "W",
-                       f"average {args.power_out.average_w:.0f} W · {args.power_out.average_w * ride_s / 1000:.0f} kcal"),
+        computer_field("Normalized power", f"{args.power_np_w:.0f}", "W",
+                       f"average {args.power_avg_w:.0f} W · {args.power_avg_w * ride_s / 1000:.0f} kcal"),
     ], className='ao-fieldsbar', **{'aria-label': 'Key figures'})
 
     pills = []

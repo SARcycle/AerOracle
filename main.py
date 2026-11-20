@@ -81,8 +81,8 @@ def main():
             print(f'Riding Time: {int(np.floor(hours)):02d}:{int(np.floor(minutes)):02d}:{int(np.floor(seconds)):02d}')
             print(f'Average Speed: {np.round(100 * (distance_km * 1000 / ride_time_s * 3.6)) / 100:.2f} km/h')
             print(f'Height Difference: +{elevation_m:d} m/{int(np.sum(height_diff[height_diff < 0])):d} m')
-            print(f'Resulting Power: Avg {args.power_out.average_w:.0f} W | NP {args.power_out.normalized_w:.0f} W')
-            print(f'Estimated kcal Burned: {(args.power_out.average_w*ride_time_s)/1000:.0f} kcal')
+            print(f'Resulting Power: Avg {args.power_avg_w:.0f} W | NP {args.power_np_w:.0f} W')
+            print(f'Estimated kcal Burned: {(args.power_avg_w*ride_time_s)/1000:.0f} kcal')
             print('Riding time if only one parameter changes (- = faster, + = slower):')
             print(f'  {"":28s} {f"-{args.whatif_pct:g}%":>10s} {f"+{args.whatif_pct:g}%":>10s}')
             for sensitivity in speedcalculation.sensitivities(args, data.track):

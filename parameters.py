@@ -19,11 +19,6 @@ class PerGradient(NamedTuple):
     downhill: float
 
 
-class PowerSummary(NamedTuple):
-    average_w: float     # Average power [W]
-    normalized_w: float  # Normalized power (NP) [W]
-
-
 class WeatherProvider(StrEnum):
     OPEN_METEO = 'o'
     METEOBLUE = 'm'

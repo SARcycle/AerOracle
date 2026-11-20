@@ -9,7 +9,7 @@ import config
 import utilities
 import shade
 import weather
-from parameters import PerGradient, PowerSummary
+from parameters import PerGradient
 
 RHO0 = 1.225  # Air density at sea level and 15 °C [kg/m³]
 MAX_SPEED_MS = config.MAX_SPEED_KMH / 3.6  # Top speed (config max_speed_kmh)
@@ -259,7 +259,8 @@ def noWeatherAdjustment(assets, parameters):
                                        with_pedalling=True)
 
     track.set(speed_ms=speed, pedalling=pedalling, timestamp=update_ride_time(ride_start(parameters), track['delta_distance_m'], speed))
-    setattr(parameters, 'power_out', calculate_power_numbers(track['timestamp'], track['gradient'], parameters.power, parameters.gradient_threshold))
+    parameters.power_avg_w, parameters.power_np_w = calculate_power_numbers(track['timestamp'], track['gradient'], pedalling,
+                                                                            parameters.power, parameters.gradient_threshold)
 
     return assets
 
@@ -280,7 +281,8 @@ def weatherAdjustment(assets, parameters):
                                        with_pedalling=True)
 
     track.set(speed_ms=speed, pedalling=pedalling, timestamp=update_ride_time(ride_start(parameters), track['delta_distance_m'], speed))
-    setattr(parameters, 'power_out', calculate_power_numbers(track['timestamp'], track['gradient'], parameters.power, parameters.gradient_threshold))
+    parameters.power_avg_w, parameters.power_np_w = calculate_power_numbers(track['timestamp'], track['gradient'], pedalling,
+                                                                            parameters.power, parameters.gradient_threshold)
     track.set(yaw_angle_deg=calculate_yaw_angle(track))
 
     return assets
@@ -436,23 +438,17 @@ def calculate_yaw_angle(track):
     # Convert yaw angle from radians to degrees
     return np.rad2deg(yaw_angle_rad)
 
-def moving_average(a, n=30) :
-    ret = np.cumsum(a, dtype=float)
-    ret[n:] = ret[n:] - ret[:-n]
-    return ret[n - 1:] / n
-
-def calculate_power_numbers(timestamp, gradient, power, threshold):
-    time_array = np.arange(timestamp[0], timestamp[-1]) # Used to calculate NP
-    power_array = np.zeros(time_array.shape, dtype=float) # Storage for power at seconds level
-    powerSeq_downhill = np.split(np.where(gradient <= -threshold)[0], np.where(np.diff(np.where(gradient <= -threshold)[0]) != 1)[0]+1)
-    powerSeq_uphill = np.split(np.where(gradient >= threshold)[0], np.where(np.diff(np.where(gradient >= threshold)[0]) != 1)[0]+1)
-    for sequence in powerSeq_uphill:
-        if len(sequence)>0:
-            power_array[(np.abs(time_array - timestamp[np.nanmin(sequence)])).argmin():(np.abs(time_array - timestamp[np.nanmax(sequence)])).argmin()] = power.uphill
-    for sequence in powerSeq_downhill:
-        if len(sequence)>0:
-            power_array[(np.abs(time_array - timestamp[np.nanmin(sequence)])).argmin():(np.abs(time_array - timestamp[np.nanmax(sequence)])).argmin()] = power.downhill
-    power_array[np.where(power_array==0)[0]] = power.flat
-    power_avg = np.mean(power_array)
-    power_np = np.mean(moving_average(power_array,30)**4)**.25
-    return PowerSummary(average_w=power_avg, normalized_w=power_np)
+def calculate_power_numbers(timestamp, gradient, pedalling, power, threshold):
+    """
+    Average and normalized power (NP) [W] of the simulated ride: the rider's power for the gradient where they pedal,
+    0 W where they do not (cadence limit, pedal strike, braking for a corner), per second of riding time.
+    The power of a point applies on the way to it (from the previous point), as in cornered_speeds.
+    """
+    point_power = np.where(pedalling, per_gradient(gradient, power, threshold), 0.0)
+    seconds = np.arange(timestamp[0], timestamp[-1])
+    if len(seconds) == 0:
+        return float(point_power[-1]), float(point_power[-1])
+    segment = np.clip(np.searchsorted(timestamp, seconds, side='right'), 1, len(timestamp) - 1)
+    power_s = point_power[segment]
+    rolling = np.convolve(power_s, np.ones(30) / 30, mode='valid') if len(power_s) >= 30 else np.array([power_s.mean()])
+    return float(power_s.mean()), float(np.mean(rolling ** 4) ** .25)
