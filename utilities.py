@@ -94,11 +94,11 @@ def rwgps_download(parameters):
         display_error_message(f'RideWithGPS: unexpected error (HTTP {response.status_code}). Exiting.')
         sys.exit()
 
-def check_internet_connection():
+def check_internet_connection(host="www.google.com", port=80, timeout=5):
     try:
         # connect to the host -- tells us if the host is actually
         # reachable
-        socket.create_connection(("www.google.com", 80))
+        socket.create_connection((host, port), timeout=timeout).close()
         return True
     except OSError:
         pass

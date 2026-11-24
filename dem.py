@@ -65,7 +65,7 @@ def addElevationData(parameters, assets):
 
 
 def seaElevation(parameters, work):
-    """Points no DEM covers: 0 m in open sea (cells without a Copernicus land tile), otherwise stop with a clear error."""
+    """Points without DEM coverage set to zero -> open sea."""
     if not work.missing().any():
         return
     import shade  # Imports dem itself
@@ -73,6 +73,8 @@ def seaElevation(parameters, work):
         if shade.cell_is_sea(parameters.folder_prefix, i, j):
             index = work.missing() & work.cell(i, j)
             work.fill(index, np.zeros(index.sum()), SEA)
+    if (work.source == SEA).any():
+        print(f'\t- Adding {DEM_SOURCES[SEA]}')
     if work.missing().any():
         raise Exception(f'No elevation data for {work.missing().mean():.0%} of the route')
 
@@ -85,6 +87,23 @@ def lat_lon_prefix(i, j, upper=True):
 def unique_cells(work, index):
     """Unique tile latitudes/longitudes (floored) of the points in index."""
     return np.unique(np.floor(work.lat[index])), np.unique(np.floor(work.lon[index]))
+
+
+DOWNLOAD_TIMEOUT_S = 60
+
+
+def download_tiles(name, download, items, folder, parameters, threads, server):
+    """Download missing DEM tiles, if online."""
+    if not utilities.check_internet_connection():
+        print('\t\t- No internet connection')
+        return False
+    if not utilities.check_internet_connection(*server):
+        print('\t\t- Server not responding')
+        return False
+    utilities.disk_housekeeping(parameters)
+    print(f'\t\t- Downloading {len(items)} {name} tile{"s" if len(items) > 1 else ""}')
+    Pool(min(len(items), threads)).starmap(download, zip(items, [folder] * len(items), [parameters] * len(items)))
+    return True
 
 
 def SonnyDEMElevation(parameters, work):
@@ -144,23 +163,8 @@ def EUDEMElevation(parameters, work):
                 url_list.append(f'{server_url}/{tile_id(i, j)}.ZIP')
                 url_list = list(set(url_list))
 
-    if len(url_list) > 0:
-        if utilities.check_file(url_list[0], timeout=5):
-            utilities.disk_housekeeping(parameters)
-            numthreads = min(len(url_list), 20)
-
-            if len(url_list) == 1:
-                print(f'\t\t- Downloading {len(url_list):d} EUDEM tile (Warning: big file).')
-            else:
-                print(f'\t\t- Downloading {len(url_list):d} EUDEM tiles (Warning: big files)')
-            Pool(numthreads).starmap(downloadEUDEMtiles,
-                                     zip(url_list, [tile_folder] * len(url_list), [parameters] * len(url_list)))
-        else:
-            if not utilities.check_internet_connection():
-                print('\t\t- No internet connection - cannot download DEM tiles')
-            else:
-                print('\t\t- Server not responding - cannot download DEM tiles')
-            return
+    if url_list and not download_tiles('EU-DEM (large)', downloadEUDEMtiles, url_list, tile_folder, parameters, 20, ('gisco-services.ec.europa.eu', 443)):
+        return
 
     for i in lat_list:
         for j in lon_list:
@@ -168,7 +172,6 @@ def EUDEMElevation(parameters, work):
                 continue
             tile_name = f'{tile_folder}/{tile_id(i, j)}.tif'
             if not os.path.exists(tile_name):
-                print(f'\t\t\t- Tile {tile_id(i, j)} not available')
                 continue
             jndix = indix[in_cell(i, j) & work.missing()[indix]]
             if len(jndix) > 0:
@@ -202,21 +205,8 @@ def CopernicusDEMElevation(parameters, work):
             if not os.path.exists(f'{tile_folder}/{tile_id(i, j)}_10xInt32.tif') and in_cell(i, j).any():
                 url_list.append(tile_id(i, j))
                 url_list = list(set(url_list))
-    if len(url_list) > 0:
-        if utilities.check_internet_connection():
-            utilities.disk_housekeeping(parameters)
-            numthreads = min(len(url_list), 4)
-
-            if len(url_list) == 1:
-                print(f'\t\t- Downloading {len(url_list):d} Copernicus DEM tile.')
-            else:
-                print(f'\t\t- Downloading {len(url_list):d} Copernicus DEM tiles.')
-            Pool(numthreads).starmap(downloadCopernicusDEMtiles,
-                                     zip(url_list, [tile_folder] * len(url_list), [parameters] * len(url_list)))
-        else:
-            print('\t\t- No internet connection - cannot download DEM tiles')
-
-            return
+    if url_list and not download_tiles('Copernicus DEM', downloadCopernicusDEMtiles, url_list, tile_folder, parameters, 4, ('copernicus-dem-30m.s3.amazonaws.com', 443)):
+        return
 
     for i in lat_list:
         for j in lon_list:
@@ -224,7 +214,6 @@ def CopernicusDEMElevation(parameters, work):
                 continue
             tile_name = os.path.join(tile_folder, f'{tile_id(i, j)}_10xInt32.tif')
             if not os.path.exists(tile_name):
-                print(f'\t\t\t- Tile {os.path.basename(tile_name)} not available')
                 continue
             jndix = indix[in_cell(i, j) & work.missing()[indix]]
             if len(jndix) > 0:
@@ -256,17 +245,8 @@ def ASTERDEMElevation(parameters, work):
             if not os.path.exists(f'{tile_folder}/{tile_id(i, j)}_dem.tif') and (work.cell(i, j) & work.missing()).any():
                 server_url = 'https://e4ftl01.cr.usgs.gov/ASTT/ASTGTM.003/2000.03.01'
                 url_list.append(f'{server_url}/{tile_id(i, j)}.zip')
-    if len(url_list) > 0:
-        if utilities.check_internet_connection():
-            utilities.disk_housekeeping(parameters)
-            if len(url_list) == 1:
-                print(f'\t\t- Downloading {len(url_list):d} ASTER DEM tile')
-            else:
-                print(f'\t\t- Downloading {len(url_list):d} ASTER DEM tiles')
-            for url in url_list:
-                downloadASTERtiles(url, tile_folder, parameters)
-        else:
-            print('\t\t- No internet connection - cannot download missing DEM tiles')
+    if url_list:
+        download_tiles('ASTER DEM', downloadASTERtiles, url_list, tile_folder, parameters, 1, ('e4ftl01.cr.usgs.gov', 443))
 
     for i in lat_list:
         for j in lon_list:
@@ -302,23 +282,8 @@ def ALOSGDEMElevation(parameters, work):
             if not os.path.exists(f'{tile_folder}/ALPSMLC30_{tile_id(i, j)}_DSM.tif') and (work.cell(i, j) & work.missing()).any():
                 server_url = 'ftp://ftp.eorc.jaxa.jp/pub/ALOS/ext1/AW3D30/release_v2404'
                 url_list.append(f'{server_url}/{tile_id(np.floor(i / 5) * 5, np.floor(j / 5) * 5)}/{tile_id(i, j)}.zip')
-    if len(url_list) > 0:
-        if utilities.check_file(url_list[0], timeout=5):
-            utilities.disk_housekeeping(parameters)
-            numthreads = min(len(url_list), 20)
-
-            if len(url_list) == 1:
-                print('\t\t- Downloading {:d} ALOS GDEM tile'.format(len(url_list)))
-            else:
-                print('\t\t- Downloading {:d} ALOS GDEM tiles'.format(len(url_list)))
-            Pool(numthreads).starmap(downloadALOStiles,
-                                     zip(url_list, [tile_folder] * len(url_list), [parameters] * len(url_list)))
-        else:
-            if not utilities.check_internet_connection():
-                print('\t\t- No internet connection - cannot download DEM tiles')
-            else:
-                print('\t\t- Server not responding - cannot download DEM tiles')
-            return
+    if url_list and not download_tiles('ALOS DEM', downloadALOStiles, url_list, tile_folder, parameters, 20, ('ftp.eorc.jaxa.jp', 21)):
+        return
 
     for i in lat_list:
         for j in lon_list:
@@ -363,7 +328,8 @@ def downloadALOStiles(url, save_folder, parameters):
         except FileExistsError:
             pass
     try:
-        urllib.urlretrieve(url, f'{parameters.temp_folder}/{savefilename}')  # Download the tile
+        with urllib.urlopen(url, timeout=DOWNLOAD_TIMEOUT_S) as response, open(f'{parameters.temp_folder}/{savefilename}', 'wb') as f:
+            shutil.copyfileobj(response, f)
         utilities.extract_specific_files(f'{parameters.temp_folder}/{savefilename}', save_folder, '_DSM.tif')
         os.remove(os.path.join(parameters.temp_folder, savefilename))  # Remove zip file
         shutil.rmtree(os.path.join(parameters.temp_folder, save_folder,
@@ -386,7 +352,7 @@ def downloadASTERtiles(url, save_folder, parameters):
 
         try:
             # submit the request using the session
-            response = session.get(url, stream=True)
+            response = session.get(url, stream=True, timeout=DOWNLOAD_TIMEOUT_S)
             # raise an exception in case of http errors
             response.raise_for_status()
 
@@ -395,9 +361,8 @@ def downloadASTERtiles(url, save_folder, parameters):
                 for chunk in response.iter_content(chunk_size=1024 * 1024):
                     fd.write(chunk)
 
-        except requests.exceptions.HTTPError as e:
-            # handle any errors here
-            print(e)
+        except requests.exceptions.HTTPError:
+            return  # No tile (404) or server error
 
         utilities.extract_specific_files(os.path.join(parameters.temp_folder, save_filename), save_folder, '_dem.tif')
         os.remove("{}/{}".format(parameters.temp_folder, save_filename))
@@ -414,7 +379,9 @@ def downloadEUDEMtiles(url, save_folder, parameters):
         except FileExistsError:
             pass
     try:
-        urllib.urlretrieve(url, os.path.join(parameters.temp_folder, save_filename))
+        import shutil
+        with urllib.urlopen(url, timeout=DOWNLOAD_TIMEOUT_S) as response, open(os.path.join(parameters.temp_folder, save_filename), 'wb') as f:
+            shutil.copyfileobj(response, f)
         utilities.extract_specific_files(os.path.join(parameters.temp_folder, save_filename), save_folder, '.tif')
         os.remove(os.path.join(parameters.temp_folder, save_filename))
         return

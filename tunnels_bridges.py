@@ -88,8 +88,9 @@ def safe_restore_from_archive(file_location, asset_type, folder_prefix):
         return False
 
 def __init__(parameters, assets):
-    print('- Correcting Elevation of Tunnels and Bridges')
     find_osm_country(parameters, assets)
+    if parameters.countries: 
+        print('- Correcting Elevation of Tunnels and Bridges')
     assets = bridgeheightcorrection(parameters, assets)
     assets = tunnelheightcorrection(parameters, assets)
     return assets
