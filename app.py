@@ -98,7 +98,7 @@ DATA_SOURCES = """
     - [Weather data provided by Visual Crossing](https://www.visualcrossing.com/)
     - [meteoblue](https://www.meteoblue.com/)
 - **Elevation**
-    - [swissALTI3D](https://www.swisstopo.admin.ch/en/height-model-swissalti3d) and swissBOUNDARIES3D: source: Federal Office of Topography swisstopo
+    - [swissALTI3D](https://www.swisstopo.admin.ch/en/height-model-swissalti3d) and [swissBOUNDARIES3D](https://www.swisstopo.admin.ch/en/landscape-model-swissboundaries3d): source: Federal Office of Topography swisstopo
     - [LiDAR DTMs by Sonny](https://sonny.4lima.de/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
     - [Copernicus DEM](https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM):
       produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018
@@ -462,7 +462,22 @@ def card(title, children, hint=None, head_extra=None, body_class='ao-card-body')
     return html.Section([html.Div(head, className='ao-card-head'), html.Div(children, className=body_class)], className='ao-card')
 
 
-def computer_field(label, value, unit, sub=None):
+WEIGHTED_POWER_INFO = ("Power you could have held at a perfectly steady pace for the same effort "
+                       "(Allen, H., Coggan, A. R., & McGregor, S. (2019). Training and racing with a power meter (3rd ed.). VeloPress.)")
+
+
+def help_label(text, help_text, help_id, href=None):
+    """Dotted-underlined text with a tooltip on hover or tap; a link where href is given."""
+    if href:
+        mark = html.A(text, id=help_id, href=href, target='_blank', rel='noopener', className='ao-has-help')
+    else:
+        mark = html.Span(text, id=help_id, tabIndex=0, className='ao-has-help')
+    return html.Span([mark, dbc.Tooltip(help_text, target=help_id, placement='top')])
+
+
+def computer_field(label, value, unit, sub=None, info=None):
+    if info:
+        label = help_label(label, info, 'help-' + re.sub(r'\W+', '-', label.lower()))
     return html.Div([html.Span(label, className='ao-label'), html.Span([value, html.Small(unit)], className='ao-big'),
                      *([html.Span(sub, className='ao-sub')] if sub else [])], className='ao-cfield')
 
@@ -556,8 +571,9 @@ def conditions(args, data):
     if uv is not None:  # Only in forecasts, not for past dates
         help_texts["UV index"] = f"UV index {uv:.1f}. {uv_info(uv)} Source: Swiss Federal Office of Public Health (BAG), www.bag.admin.ch/uv-index"
         items.append(("UV index", f"{uv:.1f}", uv_info(uv).split(':')[0]))
-    return html.Div([html.Div([html.Span(label, className='ao-label' + (' ao-has-help' if label in help_texts else '')), html.B(value), html.Small(sub)],
-                              title=help_texts.get(label)) for label, value, sub in items], className='ao-wx')
+    return html.Div([html.Div([html.Span(help_label(label, help_texts[label], 'help-' + re.sub(r'\W+', '-', label.lower()))
+                                         if label in help_texts else label, className='ao-label'), html.B(value), html.Small(sub)])
+                     for label, value, sub in items], className='ao-wx')
 
 
 def echelon_table(data):
@@ -603,7 +619,7 @@ def nerd_card(args, data):
                            html.Span(utilities.format_time_change(value), className='ao-nerd-val')], className='ao-nerd-time')
                  for name, value in effects.items()]
 
-    figures = [("Variability index", f"{args.power_np_w / max(args.power_avg_w, 1):.2f}", "NP / average"),
+    figures = [("Variability index", f"{args.power_weighted_w / max(args.power_avg_w, 1):.2f}", "weighted / average"),
                ("Power to weight", f"{args.power_avg_w / args.weight:.2f}", "W/kg, system")]
     if track.has('air_density_kgm3'):
         figures.append(("Air density", f"{np.average(track['air_density_kgm3'], weights=dt):.3f}", "kg/m³, mean"))
@@ -684,8 +700,8 @@ def results_layout(key, args, data, settings, theme='light'):
         computer_field("Average speed", f"{distance_km[-1] / ride_s * 3600:.2f}", "km/h"),
         computer_field("Ascent", f"+{ascent:.0f}", "m"),  # Highest point and finish elevation: see the profile
         computer_field("Descent", f"−{descent:.0f}", "m"),
-        computer_field("Normalized power", f"{args.power_np_w:.0f}", "W",
-                       f"average {args.power_avg_w:.0f} W · {args.power_avg_w * ride_s / 1000:.0f} kcal"),
+        computer_field("Weighted power", f"{args.power_weighted_w:.0f}", "W",
+                       f"average {args.power_avg_w:.0f} W · {args.power_avg_w * ride_s / 1000:.0f} kcal", info=WEIGHTED_POWER_INFO),
     ], className='ao-fieldsbar', **{'aria-label': 'Key figures'})
 
     pills = []
@@ -924,14 +940,9 @@ def nerd_model(values, cornering=config.CORNERING):
     return model, changed, invalid
 
 
-def nerd_info(key):
-    """Info mark with tooltip, a link where there is an article."""
-    if key not in NERD_INFO:
-        return None
-    info_id = f'nerd-info-{key}'
-    mark = (html.A("ⓘ", id=info_id, href=NERD_LINKS[key], target='_blank', rel='noopener', className='ao-info') if key in NERD_LINKS
-            else html.Span("ⓘ", id=info_id, tabIndex=0, className='ao-info'))
-    return html.Span([mark, dbc.Tooltip(NERD_INFO[key], target=info_id, placement='top')])
+def nerd_label(key, label):
+    """Field label, with tooltip where there is an explanation."""
+    return help_label(label, NERD_INFO[key], f'nerd-help-{key}', NERD_LINKS.get(key)) if key in NERD_INFO else label
 
 
 def nerd_step():
@@ -941,11 +952,10 @@ def nerd_step():
             rows.append(html.Span(name, className='ao-label ao-nerd-group'))
             group = name
         field_id = {'type': 'nerd', 'key': key}
-        info = nerd_info(key)
         if kind == 'switch':
-            control = [html.Div([dbc.Switch(id=field_id, label=label, value=default), info], className='ao-nerd-label')]
+            control = [dbc.Switch(id=field_id, label=nerd_label(key, label), value=default)]
         else:
-            control = [html.Div([html.Label(label), info], className='ao-nerd-label'),
+            control = [html.Label(nerd_label(key, label)),
                        dbc.Select(id=field_id, size='sm', value=default, options=[{'label': text, 'value': value} for value, text in WET_ROADS.items()])
                        if kind == 'select' else dbc.Input(id=field_id, type='number', value=default, step='any', min=low, max=high, size='sm')]
         rows.append(html.Div([*control, html.Span(id={'type': 'nerd-default', 'key': key}, className='ao-nerd-default')],

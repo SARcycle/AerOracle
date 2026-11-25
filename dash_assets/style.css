@@ -159,9 +159,6 @@ h1, h2, h3, h4 { font-family: var(--ao-font-display); font-weight: 600; letter-s
 .ao-nerd-fields { display: grid; gap: 10px; padding-top: 4px; }
 .ao-nerd-group { margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--ao-line); }
 .ao-nerd-changed .form-control, .ao-nerd-changed .form-select { border-color: var(--ao-accent); box-shadow: inset 3px 0 0 var(--ao-accent); }
-.ao-nerd-label { display: flex; gap: 6px; align-items: center; }
-.ao-info { color: var(--ao-ink-3); font-size: 13px; cursor: help; text-decoration: none; }
-a.ao-info { cursor: pointer; }
 .ao-nerd-default { display: none; font-size: 12px; color: var(--ao-accent); font-weight: 600; }
 .ao-nerd-changed .ao-nerd-default { display: block; }
 .ao-nerd-flag { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; background: var(--ao-accent-soft); color: var(--ao-ink);
@@ -225,7 +222,8 @@ a.ao-info { cursor: pointer; }
 .ao-wx b { font-family: var(--ao-font-display); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .ao-wx small { color: var(--ao-ink-3); font-size: 13px; }
 .ao-wx-extra { font-size: 18px; white-space: nowrap; }  /* Second value of a line, e.g. the time effect of the wind */
-.ao-has-help { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+.ao-has-help { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; color: inherit; }
+a.ao-has-help { cursor: pointer; }
 
 .ao-downloads { display: flex; gap: 10px; flex-wrap: wrap; }
 .ao-dl { border: 1px solid var(--ao-line); background: var(--ao-surface); color: var(--ao-ink); border-radius: 8px; padding: 10px 14px; display: grid; gap: 2px; text-align: left; min-width: 160px; flex: 1; }

@@ -288,7 +288,7 @@ def noWeatherAdjustment(assets, parameters):
 
     track.set(speed_ms=speed, pedalling=pedalling, rider_power_w=rider_power,
               timestamp=update_ride_time(ride_start(parameters), track['delta_distance_m'], speed))
-    parameters.power_avg_w, parameters.power_np_w = calculate_power_numbers(track['timestamp'], rider_power)
+    parameters.power_avg_w, parameters.power_weighted_w = calculate_power_numbers(track['timestamp'], rider_power)
 
     return assets
 
@@ -310,7 +310,7 @@ def weatherAdjustment(assets, parameters):
 
     track.set(speed_ms=speed, pedalling=pedalling, rider_power_w=rider_power,
               timestamp=update_ride_time(ride_start(parameters), track['delta_distance_m'], speed))
-    parameters.power_avg_w, parameters.power_np_w = calculate_power_numbers(track['timestamp'], rider_power)
+    parameters.power_avg_w, parameters.power_weighted_w = calculate_power_numbers(track['timestamp'], rider_power)
     track.set(yaw_angle_deg=calculate_yaw_angle(track))
     if parameters.group_size > 1:
         assets.echelons = echelon_stretches(parameters, track)
@@ -513,7 +513,7 @@ def calculate_yaw_angle(track):
 
 def calculate_power_numbers(timestamp, point_power):
     """
-    Average and normalized power (NP) [W] of the simulated ride from the rider's power per point (cornered_speeds),
+    Average and weighted power [W] of the simulated ride from the rider's power per point (cornered_speeds),
     per second of riding time. The power of a point applies on the way to it (from the previous point).
     """
     seconds = np.arange(timestamp[0], timestamp[-1])

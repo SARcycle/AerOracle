@@ -351,3 +351,8 @@
         },
     });
 })();
+
+// Tapping an explained label shows its tooltip instead of toggling the switch it belongs to
+document.addEventListener('click', (event) => {
+    if (event.target.closest && event.target.closest('label span.ao-has-help')) event.preventDefault();
+});

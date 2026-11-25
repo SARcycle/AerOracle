@@ -351,7 +351,7 @@ def plot_wind_conditions(parameters, assets):
         f'{int(np.floor(hours)):02d}:{int(np.floor(minutes)):02d}:{int(np.floor(seconds)):02d}',
         f'{np.round(100 * (distance_km[-1] * 1000 / ride_time * 3.6)) / 100:.2f} km/h',
         f'+{int(np.sum(height_diff[height_diff > 0])):d} m/{int(np.sum(height_diff[height_diff < 0])):d} m',
-        f'Avg {parameters.power_avg_w:.0f} W | NP {parameters.power_np_w:.0f} W',
+        f'Avg {parameters.power_avg_w:.0f} W | Weighted {parameters.power_weighted_w:.0f} W',
         f'{(parameters.power_avg_w * ride_time) / 1000:.0f} kcal',
         f'',
         f'',
