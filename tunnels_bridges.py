@@ -207,8 +207,9 @@ def tunnelheightcorrection(parameters, assets):
         return assets
 
     assets.track.set(in_tunnel=mask)  # E.g. for the sun and shade along the route (shade.py)
-    print_data_version('Adjusting Elevation of Tunnel Passages', file_location)
-    interpolate_elevation(assets, ~mask)
+    if parameters.tunnel_correction:
+        print_data_version('Adjusting Elevation of Tunnel Passages', file_location)
+        interpolate_elevation(assets, ~mask)
 
     # Length of the track segments with both ends within a tunnel
     tunnel_passages = np.flatnonzero(mask)
@@ -223,8 +224,9 @@ def bridgeheightcorrection(parameters, assets):
     if mask is None or not mask.any():
         return assets
 
-    if not hasattr(assets, 'tunnel_distance'):  # If there were no tunnels detected before
-        print_data_version('Adjusting Elevation of Bridge Passages', file_location)
-    interpolate_elevation(assets, ~mask)
+    if parameters.tunnel_correction:
+        if not hasattr(assets, 'tunnel_distance'):  # If there were no tunnels detected before
+            print_data_version('Adjusting Elevation of Bridge Passages', file_location)
+        interpolate_elevation(assets, ~mask)
 
     return assets

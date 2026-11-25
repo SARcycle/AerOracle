@@ -22,8 +22,9 @@ from urllib.parse import parse_qs, quote, urlparse
 import dash
 import dash_bootstrap_components as dbc
 import numpy as np
+import polars as pl
 import requests
-from dash import Input, Output, State, dcc, html
+from dash import ALL, MATCH, Input, Output, State, dcc, html
 
 import assets
 import config
@@ -314,6 +315,8 @@ def analyze(route_path, settings):
     args.terrain_shadow = settings.get('terrain_shadow', False)  # Opt-in in the web app (the command line always calculates it)
     args.output = False
     args.weather_file = settings.get('weather_file')  # Stored weather instead of API calls (example route)
+    for key, value in settings.get('model', {}).items():  # Nerd mode values
+        setattr(args, key, value)
 
     data = assets.Assets(args)
     utilities.set_start_time(args, data)
@@ -335,6 +338,20 @@ def write_outputs(key, data, course_name):
     if course_name:
         tcx_writer.update_tcx_name(tcx_path, course_name)
     (folder / FIT_POINT_TYPES_FILE).write_text(json.dumps(tcx_writer.fit_point_types(data.track)))
+
+
+CSV_COLUMNS = {'distance_m': 'distance_m', 'lat': 'lat', 'lon': 'lon', 'elevation_m': 'elevation_m', 'gradient': 'gradient',
+               'speed_ms': 'speed_ms', 'rider_power_w': 'power_w', 'headwind_ms': 'headwind_ms', 'yaw_angle_deg': 'yaw_deg',
+               'air_density_kgm3': 'air_density_kgm3', 'temperature_c': 'temperature_c'}
+
+
+def write_csv(key, args, data):
+    """Per-point model data as CSV in the analysis folder."""
+    track = data.track
+    columns = {name: track[column] for column, name in CSV_COLUMNS.items() if track.has(column)}
+    columns['cda_m2'] = speedcalculation.effective_cda(args, track['gradient'])
+    columns['time_s'] = track['timestamp'] - track['timestamp'][0]
+    pl.DataFrame(columns).write_csv(WORK_DIR / key / 'route.csv', float_precision=6)
 
 
 FIT_POINT_TYPES_FILE = 'fit_point_types.json'
@@ -543,6 +560,71 @@ def conditions(args, data):
                               title=help_texts.get(label)) for label, value, sub in items], className='ao-wx')
 
 
+def echelon_table(data):
+    """Stretches with strong cross wind, rows clickable as in the climbs table."""
+    if not hasattr(data, 'echelons'):
+        return html.Div("Needs the weather forecast.", className='ao-hint')
+    if not data.echelons:
+        return html.Div("No stretch with strong cross wind.", className='ao-hint')
+    return html.Div(html.Table([
+        html.Thead(html.Tr([html.Th(h) for h in ("Start at km", "End at km", "Length", "Cross wind", "From", "Yaw")])),
+        html.Tbody([html.Tr([
+            html.Td(f"{e['start_km']:.1f}"), html.Td(f"{e['end_km']:.1f}"), html.Td(f"{e['end_km'] - e['start_km']:.1f} km"),
+            html.Td(f"{e['crosswind_ms']:.1f} m/s"), html.Td(e['side']), html.Td(f"{e['yaw_deg']:.0f}°"),
+        ], className='ao-climb-row', title="Show this stretch in the profile and on the map",
+           **{'data-start': f"{e['start_km']:.3f}", 'data-end': f"{e['end_km']:.3f}"}) for e in data.echelons]),  # Used by hover_sync.js
+    ], className='ao-climbs'), className='ao-tablewrap')
+
+
+def nerd_card(args, data):
+    """Numbers for nerds: sections, where the time goes, ride figures, echelons, CSV."""
+    track = data.track
+    dt = np.append(np.diff(track['timestamp']), 0)
+    step = np.append(np.diff(track['distance_m']), 0)
+    power, gradient, limit = track['rider_power_w'], track['gradient'], args.gradient_threshold
+    total_s = dt.sum()
+    rows = []
+    for name, mask in (('Flat', (gradient > -limit) & (gradient < limit)), ('Uphill', gradient >= limit), ('Downhill', gradient <= -limit)):
+        seconds, km = dt[mask].sum(), step[mask].sum() / 1000
+        if seconds:
+            rows.append(html.Tr([html.Td(name), html.Td(f"{km:.1f} km"), html.Td(format_duration(seconds)), html.Td(f"{seconds / total_s:.0%}"),
+                                 html.Td(f"{km / seconds * 3600:.1f} km/h"), html.Td(f"{np.sum(power[mask] * dt[mask]) / seconds:.0f} W"),
+                                 html.Td(f"{np.sum(power[mask] * dt[mask]) / 1000:.0f} kJ")]))
+    sections = html.Div(html.Table([html.Thead(html.Tr([html.Th(h) for h in ("Section", "Distance", "Time", "Share", "Speed", "Power", "Work")])),
+                                    html.Tbody(rows)], className='ao-climbs'), className='ao-tablewrap')
+
+    effects = speedcalculation.time_effects(args, track)
+    labels = {'Wind': "vs. still air", 'Air density': "vs. 15 °C standard atmosphere",
+              'Wet roads': "vs. dry roads", 'Drafting': "vs. riding alone", 'Sprints': "vs. no sprints"}
+    longest = max([abs(v) for v in effects.values()] + [1])
+    time_rows = [html.Div([html.Span([name, html.Small(labels[name])]),
+                           html.Span(html.Span(className='ao-nerd-bar ' + ('minus' if value < 0 else 'plus'),
+                                               style={'width': f"{abs(value) / longest * 100:.1f}%"})),
+                           html.Span(utilities.format_time_change(value), className='ao-nerd-val')], className='ao-nerd-time')
+                 for name, value in effects.items()]
+
+    figures = [("Variability index", f"{args.power_np_w / max(args.power_avg_w, 1):.2f}", "NP / average"),
+               ("Power to weight", f"{args.power_avg_w / args.weight:.2f}", "W/kg, system")]
+    if track.has('air_density_kgm3'):
+        figures.append(("Air density", f"{np.average(track['air_density_kgm3'], weights=dt):.3f}", "kg/m³, mean"))
+    if track.has('yaw_angle_deg'):
+        yaw = np.abs(track['yaw_angle_deg'])
+        figures.append(("Yaw angle", f"{np.average(yaw, weights=dt):.1f}°", f"mean, 90 % below {np.percentile(yaw, 90):.1f}°"))
+
+    def figure_grid(items):
+        return html.Div([html.Div([html.Span(label, className='ao-label'), html.B(value), html.Small(sub)]) for label, value, sub in items],
+                        className='ao-wx')
+
+    parts = [html.H3("By section", className='ao-nerd-sub'), sections,
+             *([html.H3("Where the time goes", className='ao-nerd-sub'), html.Div(time_rows, className='ao-nerd-times')] if time_rows else []),
+             html.H3("Ride figures", className='ao-nerd-sub'), figure_grid(figures)]
+    if args.group_size > 1:
+        parts += [html.H3("Possible echelons", className='ao-nerd-sub'), echelon_table(data)]
+    parts.append(html.Div([html.Button([html.B("CSV"), html.Span("per point")], id='download-csv-button', className='ao-dl', n_clicks=0),
+                           dcc.Download(id='download-csv'), html.Div(id='download-csv-message')], className='ao-nerd-csv'))
+    return card("Numbers for nerds", parts)
+
+
 def dem_sources(track):
     """Names of the DEMs the elevations come from, the one used for most points first."""
     return [str(name) for name, _ in track.points['dem_source'].drop_nulls().value_counts(sort=True).iter_rows()]
@@ -653,11 +735,14 @@ def results_layout(key, args, data, settings, theme='light'):
 
     return html.Div([
         html.Div([html.Span([html.Span(f"{label}: ", className='ao-meta-label'), value]) for label, value in meta], className='ao-ride-meta'),
+        *([html.Div([html.B("Nerd settings"), html.Span('; '.join(f"{label}: {value}" for label, value in settings['nerd_changed']))],
+                    className='ao-nerd-flag')] if settings.get('nerd_changed') else []),
         *([dbc.Alert(utilities.daylight_warning(args, data), color='warning', className='mb-0')]
           if args.time and utilities.daylight_warning(args, data) else []),
         fields,
         *([html.Div(pills, className='ao-pills')] if pills else []),
         route_card,
+        *([nerd_card(args, data)] if settings.get('nerd') else []),
         html.Div([card(f"What if a value changes by ±{args.whatif_pct:g}%?", whatif_chart(speedcalculation.sensitivities(args, track), args.whatif_pct), hint="Only one parameter changes at a time"),
                   card("Climb" if len(climbs) == 1 else "Climbs", climbs_table(args, climbs), hint=f"{len(climbs)} detected" if args.climbs else None)],
                  className='ao-twocol'),
@@ -728,6 +813,153 @@ def step(number_, title, children):
                         className='ao-step')
 
 
+# --- Nerd mode: model values ---
+
+P = parameters.Parameters
+STYLE_G = speedcalculation.CORNERING.get(config.CORNERING, speedcalculation.CORNERING['average'])
+WET_ROADS = {'forecast': "Forecast", 'dry': "Dry", 'wet': "Wet"}
+NERD_FIELDS = [  # (group, key, label, kind, default, min, max); kind: number, optional (empty allowed), switch, select
+    ("Gradient", 'gradient', "Gradient threshold, %", 'number', 5, 0.5, 30),
+    ("Wind", 'wind_shear', "Wind shear exponent", 'number', P.wind_shear_exponent, 0, 1),
+    ("Wind", 'rider_height', "Rider height, m", 'number', P.rider_height_m, 0.5, 3),
+    ("Wind", 'still_air', "Ignore wind (still air)", 'switch', P.still_air, None, None),
+    ("Cornering", 'lateral_g', "Max lateral, g", 'number', STYLE_G[0], 0.1, 1.2),
+    ("Cornering", 'braking_g', "Max braking, g", 'number', STYLE_G[1], 0.1, 1.2),
+    ("Road conditions", 'wet_roads', "Road conditions", 'select', P.wet_roads, None, None),
+    ("Road conditions", 'wet_mm', "Rain threshold, mm/h", 'number', P.wet_road_mm_per_h, 0, 50),
+    ("Road conditions", 'wet_grip', "Max grip when wet, g", 'number', P.wet_grip_g, 0.1, 1.2),
+    ("Road conditions", 'wet_caution', "Cornering when wet, % of dry", 'number', round(P.wet_caution * 100), 10, 100),
+    ("Speed limits", 'max_pedalling', "Pedalling up to, km/h", 'number', P.max_pedalling_speed_kmh, 20, 120),
+    ("Speed limits", 'max_speed', "Top speed, km/h", 'number', P.max_speed_kmh, 20, 150),
+    ("Drivetrain", 'efficiency', "Efficiency, %", 'number', round(P.drivetrain_efficiency * 100), 80, 100),
+    ("Group riding", 'group_on', "Ride in a group", 'switch', False, None, None),
+    ("Group riding", 'group_size', "Riders", 'number', 4, 2, 200),
+    ("Group riding", 'front_share', "Time at the front, % (empty: equal turns)", 'optional', None, 0, 100),
+    ("Group riding", 'drafting', "Drag reduction in slipstream, %", 'number', round((1 - P.drafting_factor) * 100), 0, 80),
+    ("Group riding", 'draft_climbs', "Drafting uphill", 'switch', P.draft_on_climbs, None, None),
+    ("Group riding", 'echelon_wind', "Echelon warning from cross wind, m/s", 'number', P.echelon_crosswind_ms, 0, 20),
+    ("Group riding", 'echelon_yaw', "… and yaw, °", 'number', P.echelon_yaw_deg, 0, 90),
+    ("Group riding", 'echelon_m', "… over at least, m", 'number', P.echelon_min_m, 0, 10000),
+    ("Sprinting out of corners", 'sprint_power', "Power, W (empty: off)", 'optional', P.sprint_power_w, 0, 2000),
+    ("Sprinting out of corners", 'sprint_s', "At most, s", 'number', P.sprint_s, 1, 60),
+    ("Sprinting out of corners", 'sprint_loss', "Min. corner speed loss, km/h", 'number', P.sprint_min_loss_kmh, 0, 50),
+    ("Elevation", 'file_elevation', "Keep elevation from the uploaded file", 'switch', P.file_elevation, None, None),
+    ("Elevation", 'tunnels', "Correct tunnels and bridges", 'switch', P.tunnel_correction, None, None),
+]
+NERD_INFO = {  # Field -> tooltip
+    'gradient': "Uphill power and CdA from this gradient, downhill from minus this gradient",
+    'wind_shear': "Wind decrease towards the ground; higher in sheltered terrain",
+    'rider_height': "Torso height, where the wind acts",
+    'lateral_g': "Follows the cornering style unless changed",
+    'braking_g': "Follows the cornering style unless changed",
+    'wet_roads': "Forecast: wet where it rains more than the threshold",
+    'wet_mm': "Rain in the hour before passing",
+    'wet_grip': "Upper limit of lateral and braking acceleration when wet",
+    'wet_caution': "Share of the dry lateral and braking values used when wet",
+    'max_pedalling': "No pedalling above this speed",
+    'max_speed': "Speed never exceeded, e.g. on descents",
+    'efficiency': "Share of the power reaching the rear wheel",
+    'front_share': "Empty: same share for every rider",
+    'drafting': "Lower CdA behind other riders",
+    'draft_climbs': "Off: no drafting from the gradient threshold up",
+    'group_on': "Same average power, less drag in the group",
+    'echelon_wind': "Lists stretches where the group might split (needs the weather forecast)",
+    'sprint_power': "Power out of corners, if higher than the normal power",
+    'sprint_s': "Ends earlier once back at steady speed",
+    'sprint_loss': "Only after corners slowing down by at least this",
+    'file_elevation': "Elevation models only for gaps",
+    'tunnels': "Elevation interpolated through tunnels and over bridges",
+}
+GROUP_KEYS = ('group_size', 'front_share', 'drafting', 'draft_climbs', 'echelon_wind', 'echelon_yaw', 'echelon_m')
+NERD_LINKS = {'wind_shear': "https://en.wikipedia.org/wiki/Wind_gradient"}
+NERD_DEFAULTS = {key: default for _, key, _, _, default, _, _ in NERD_FIELDS}
+NERD_MODEL = {  # Field -> (Parameters attribute, factor)
+    'gradient': ('gradient_threshold', 0.01), 'wind_shear': ('wind_shear_exponent', 1), 'rider_height': ('rider_height_m', 1),
+    'still_air': ('still_air', 1), 'wet_roads': ('wet_roads', 1), 'wet_mm': ('wet_road_mm_per_h', 1), 'wet_grip': ('wet_grip_g', 1),
+    'wet_caution': ('wet_caution', 0.01), 'max_pedalling': ('max_pedalling_speed_kmh', 1), 'max_speed': ('max_speed_kmh', 1),
+    'efficiency': ('drivetrain_efficiency', 0.01), 'group_size': ('group_size', 1), 'front_share': ('front_share', 0.01),
+    'draft_climbs': ('draft_on_climbs', 1), 'echelon_wind': ('echelon_crosswind_ms', 1), 'echelon_yaw': ('echelon_yaw_deg', 1),
+    'echelon_m': ('echelon_min_m', 1), 'sprint_power': ('sprint_power_w', 1), 'sprint_s': ('sprint_s', 1),
+    'sprint_loss': ('sprint_min_loss_kmh', 1), 'file_elevation': ('file_elevation', 1), 'tunnels': ('tunnel_correction', 1),
+}
+
+
+def nerd_defaults(cornering):
+    """Field defaults, cornering fields from the cornering style."""
+    style = speedcalculation.CORNERING.get(cornering, STYLE_G)
+    return {**NERD_DEFAULTS, 'lateral_g': style[0], 'braking_g': style[1]}
+
+
+def nerd_unused(values):
+    """Fields that do not apply: hidden by the group riding switch or the road conditions."""
+    roads = values.get('wet_roads', P.wet_roads)
+    return ((() if values.get('group_on') else GROUP_KEYS) + (() if roads == 'forecast' else ('wet_mm',))
+            + (('wet_grip', 'wet_caution') if roads == 'dry' else ()))
+
+
+def nerd_model(values, cornering=config.CORNERING):
+    """Model values, changed fields [(label, value)] and invalid fields from the nerd fields {key: value}."""
+    model, changed, invalid = {}, [], []
+    defaults = nerd_defaults(cornering)
+    unused = nerd_unused(values)
+    for _, key, label, kind, _, low, high in NERD_FIELDS:
+        if key in unused:
+            continue
+        default = defaults[key]
+        value = values.get(key, default)
+        if kind == 'number' and value is None:
+            invalid.append(label)
+            continue
+        if value != default:
+            changed.append((label.split(' (')[0], WET_ROADS.get(value, value) if kind == 'select' else ("on" if value is True else "off" if value is False else value)))
+        if key in NERD_MODEL:
+            attribute, factor = NERD_MODEL[key]
+            model[attribute] = value * factor if isinstance(value, (int, float)) and not isinstance(value, bool) and factor != 1 else value
+    if values.get('group_on') and values.get('drafting') is not None:
+        model['drafting_factor'] = 1 - values['drafting'] / 100
+    lateral, braking = values.get('lateral_g', defaults['lateral_g']), values.get('braking_g', defaults['braking_g'])
+    if None not in (lateral, braking) and (lateral, braking) != (defaults['lateral_g'], defaults['braking_g']):
+        model['cornering_g'] = (lateral, braking)
+    model['group_size'] = round(model.get('group_size', 1))
+    return model, changed, invalid
+
+
+def nerd_info(key):
+    """Info mark with tooltip, a link where there is an article."""
+    if key not in NERD_INFO:
+        return None
+    info_id = f'nerd-info-{key}'
+    mark = (html.A("ⓘ", id=info_id, href=NERD_LINKS[key], target='_blank', rel='noopener', className='ao-info') if key in NERD_LINKS
+            else html.Span("ⓘ", id=info_id, tabIndex=0, className='ao-info'))
+    return html.Span([mark, dbc.Tooltip(NERD_INFO[key], target=info_id, placement='top')])
+
+
+def nerd_step():
+    rows, group = [], None
+    for name, key, label, kind, default, low, high in NERD_FIELDS:
+        if name != group:
+            rows.append(html.Span(name, className='ao-label ao-nerd-group'))
+            group = name
+        field_id = {'type': 'nerd', 'key': key}
+        info = nerd_info(key)
+        if kind == 'switch':
+            control = [html.Div([dbc.Switch(id=field_id, label=label, value=default), info], className='ao-nerd-label')]
+        else:
+            control = [html.Div([html.Label(label), info], className='ao-nerd-label'),
+                       dbc.Select(id=field_id, size='sm', value=default, options=[{'label': text, 'value': value} for value, text in WET_ROADS.items()])
+                       if kind == 'select' else dbc.Input(id=field_id, type='number', value=default, step='any', min=low, max=high, size='sm')]
+        rows.append(html.Div([*control, html.Span(id={'type': 'nerd-default', 'key': key}, className='ao-nerd-default')],
+                             id={'type': 'nerd-field', 'key': key}, className='ao-field'))
+    return step("4", "For nerds", [
+        dbc.Switch(id='nerd-on', label="Nerd mode", value=False),
+        dbc.Collapse(id='nerd-panel', is_open=False, children=html.Div([
+            *rows,
+            html.Button("Reset to defaults", id='nerd-reset', className='ao-link', n_clicks=0),
+        ], className='ao-nerd-fields')),
+        dcc.Store(id='nerd-defaults', data=NERD_DEFAULTS),
+    ])
+
+
 def rail():
     today = date.today()
     return html.Aside([
@@ -783,6 +1015,7 @@ def rail():
                 dbc.Switch(id='terrain-shadow', label="Calculate terrain shadow", value=False, className='mt-2')]),  # Opt-in: faster without
             html.Div("Up to 7 days ahead, or a past date", className='ao-hint'),
         ]),
+        nerd_step(),
         dbc.Button("Analyze route", id='analyze', color='primary', className='ao-analyze'),
         share_section(),
     ], className='ao-rail', id='setup', **{'aria-label': 'Setup'})
@@ -796,7 +1029,7 @@ def rail():
 SHARE_GROUPS = [('rider', "Rider: power, CdA, weight, rolling resistance, cornering"),
                 ('options', "Options: climbs, weather, terrain shadow"),
                 ('time', "Start time"), ('date', "Start date"),
-                ('route', "Route: RideWithGPS link, course name")]
+                ('route', "Route: RideWithGPS link, course name"), ('nerd', "For nerds: changed model values")]
 LINK_DISCLAIMER = ("The link contains these values in plain text: anyone who has it can see them, and like any web address "
                    "it may appear in server logs.")
 
@@ -870,6 +1103,18 @@ def parse_settings_link(search):
         values.update({'input-method': "RideWithGPS link", 'url': query['route']})
     if 'name' in query and take('name', query['name'][:tcx_writer.MAX_COURSE_NAME_LEN] or None):
         values.update({'course-rename': True, 'course-name': query['name'][:tcx_writer.MAX_COURSE_NAME_LEN]})
+    nerd = {}
+    for _, key, _, kind, _, low, high in NERD_FIELDS:
+        if (name := f'n_{key}') in query:
+            raw = query[name]
+            value = ({'1': True, '0': False}.get(raw) if kind == 'switch' else raw if kind == 'select' and raw in WET_ROADS
+                     else None if kind == 'select' else link_number(raw, 1, low, high))
+            if value is None:
+                ignored.append(name)
+            else:
+                nerd[key] = value
+    if nerd or query.get('nerd') == '1':
+        values.update({'nerd-on': True, 'nerd': nerd})
     return values, ignored
 
 
@@ -1081,7 +1326,7 @@ def show_progress(n_intervals, job):
     State('weight', 'value'), State('cda-flat', 'value'), State('cda-up', 'value'), State('cda-down', 'value'),
     State('rr-type', 'value'), State('rr-value', 'value'), State('cornering', 'value'), State('climbs', 'value'),
     State('weather-on', 'value'), State('start-date', 'date'), State('start-time', 'value'), State('terrain-shadow', 'value'),
-    State('theme', 'data'),
+    State('theme', 'data'), State('nerd-on', 'value'), State({'type': 'nerd', 'key': ALL}, 'value'), State({'type': 'nerd', 'key': ALL}, 'id'),
     prevent_initial_call=True,
 )
 def run_analysis(job, *inputs):
@@ -1096,7 +1341,8 @@ def run_analysis(job, *inputs):
 
 def analysis_outputs(example, input_method, upload_contents, upload_filename, url, course_rename, course_name,
                      power_flat, power_up, power_down, weight, cda_flat, cda_up, cda_down,
-                     rr_type, rr_value, cornering, climbs, weather_on, start_date, start_time, terrain_shadow, theme):
+                     rr_type, rr_value, cornering, climbs, weather_on, start_date, start_time, terrain_shadow, theme,
+                     nerd_on=False, nerd_values=(), nerd_ids=()):
     """Outputs of run_analysis except for the progress panel: results, analysis key and the rail values for the example."""
     unchanged = (dash.no_update,) * 5
 
@@ -1124,6 +1370,8 @@ def analysis_outputs(example, input_method, upload_contents, upload_filename, ur
               ("System weight", weight, "0 to 200 kg"), ("CdA, flat", cda_flat, cda), ("CdA, uphill", cda_up, cda),
               ("CdA, downhill", cda_down, cda), (rr_type, rr_value, "at least 0" if rr_type == "Crr" else "at least 0 W")]
     invalid = [f"{name} ({rule})" for name, value, rule in fields if value is None]
+    model, nerd_changed, nerd_invalid = nerd_model({field['key']: value for field, value in zip(nerd_ids, nerd_values)}, cornering) if nerd_on else ({}, [], [])
+    invalid += [f"{name} (for nerds)" for name in nerd_invalid]
     if len(invalid) == 1:
         return error(f"Please check {invalid[0]}: the field is empty or the value is outside this range.")
     if invalid:
@@ -1142,7 +1390,8 @@ def analysis_outputs(example, input_method, upload_contents, upload_filename, ur
                     crr=rr_value if rr_type == "Crr" else rr_value / PRR_PER_CRR, climbs=climbs, start_time=start,
                     terrain_shadow=bool(terrain_shadow and start),
                     cornering=cornering if cornering in CORNERING_LEVELS else config.CORNERING,
-                    weather_file=str(EXAMPLE_WEATHER) if example and EXAMPLE_WEATHER.exists() else None)
+                    weather_file=str(EXAMPLE_WEATHER) if example and EXAMPLE_WEATHER.exists() else None,
+                    nerd=bool(nerd_on), model=model, nerd_changed=nerd_changed)
 
     key = uuid.uuid4().hex
     route_path = None
@@ -1157,6 +1406,8 @@ def analysis_outputs(example, input_method, upload_contents, upload_filename, ur
         route_path.unlink(missing_ok=True)  # The route itself is not kept
         print("- Writing TCX file")  # GPX and FIT: converted on download
         write_outputs(key, data, course_name if course_rename else None)
+        if settings.get('nerd'):
+            write_csv(key, args, data)
         (WORK_DIR / key / 'name.txt').write_text(download_name(file_stem, course_name if course_rename else None))
         log_analysis(data, success=True)
         print("- Preparing the results")
@@ -1196,6 +1447,18 @@ def download(tcx_clicks, gpx_clicks, fit_clicks, key):
     return dcc.send_file(str(path), filename=f'{name}{suffix}'), None
 
 
+@app.callback(Output('download-csv', 'data'), Output('download-csv-message', 'children'),
+              Input('download-csv-button', 'n_clicks'), State('analysis-key', 'data'), prevent_initial_call=True)
+def download_csv(clicks, key):
+    if not clicks:
+        return dash.no_update, dash.no_update
+    folder = WORK_DIR / key if key and re.fullmatch(r'[0-9a-f]{32}', key) else None
+    if folder is None or not (folder / 'route.csv').exists():
+        return dash.no_update, dbc.Alert("The processed files are no longer available (deleted after 30 minutes). Please analyze the route again.",
+                                         color='warning', className='mt-2 mb-0')
+    return dcc.send_file(str(folder / 'route.csv'), filename=f"{(folder / 'name.txt').read_text()}.csv"), None
+
+
 LINK_FIELDS = ['power-flat', 'power-up', 'power-down', 'cda-flat', 'cda-up', 'cda-down', 'weight', 'cornering', 'climbs', 'weather-on',
                'terrain-shadow', 'start-time', 'start-date', 'input-method', 'url', 'course-rename', 'course-name']
 
@@ -1203,14 +1466,18 @@ LINK_FIELDS = ['power-flat', 'power-up', 'power-down', 'cda-flat', 'cda-up', 'cd
 @app.callback(
     *[Output(field_id, 'date' if field_id == 'start-date' else 'value', allow_duplicate=True) for field_id in LINK_FIELDS],
     Output('rr-type', 'value', allow_duplicate=True), Output('rr-value', 'value', allow_duplicate=True), Output('link-status', 'children'),
-    Input('location', 'search'),
+    Output('nerd-on', 'value', allow_duplicate=True), Output({'type': 'nerd', 'key': ALL}, 'value', allow_duplicate=True),
+    Input('location', 'search'), State({'type': 'nerd', 'key': ALL}, 'id'),
     prevent_initial_call='initial_duplicate',
 )
-def load_settings_link(search):
+def load_settings_link(search, nerd_ids):
     """Fill in the setup from a settings link (once, at page load). The analysis is not started."""
     values, ignored = parse_settings_link(search)
+    nerd = values.get('nerd', {})
+    defaults = nerd_defaults(values.get('cornering', config.CORNERING))
+    nerd_values = [nerd.get(field['key'], defaults[field['key']]) for field in nerd_ids] if 'nerd-on' in values else [dash.no_update] * len(nerd_ids)
     if not values and not ignored:
-        return (dash.no_update,) * (len(LINK_FIELDS) + 3)
+        return (dash.no_update,) * (len(LINK_FIELDS) + 4) + (nerd_values,)
     if 'prr' in values:
         # Switching to Prr converts the field's value from Crr (convert_rolling_resistance): pass the Crr equivalent
         rr_type, rr_value = "Prr", values['prr'] / PRR_PER_CRR
@@ -1219,7 +1486,61 @@ def load_settings_link(search):
     status = [html.B("Settings loaded from the link"),
               html.Span("Check them, then analyze." + (f" Ignored (invalid): {', '.join(ignored)}." if ignored else ""))]
     return (*[values.get(field_id, dash.no_update) for field_id in LINK_FIELDS], rr_type, rr_value,
-            html.Div(status, className='ao-linknote'))
+            html.Div(status, className='ao-linknote'), values.get('nerd-on', dash.no_update), nerd_values)
+
+
+dash.clientside_callback(  # Nerd mode: show the fields
+    "function (on) { return Boolean(on); }",
+    Output('nerd-panel', 'is_open'), Input('nerd-on', 'value'),
+)
+
+dash.clientside_callback(  # Nerd mode: mark values that differ from the default, show the default
+    r"""
+    function (value, defaults, id) {
+        const norm = (v) => (v === undefined || v === '' ? null : v);
+        const v = norm(value), d = norm(defaults[id.key]);
+        const same = v === d || (typeof d === 'number' && v !== null && Number(v) === d);
+        const names = %s;
+        const shown = d === true ? 'on' : d === false ? 'off' : d === null ? 'empty' : (names[d] || String(d));
+        return [same ? 'ao-field' : 'ao-field ao-nerd-changed', 'Changed (default: ' + shown + ')'];
+    }
+    """ % json.dumps(WET_ROADS),
+    Output({'type': 'nerd-field', 'key': MATCH}, 'className'), Output({'type': 'nerd-default', 'key': MATCH}, 'children'),
+    Input({'type': 'nerd', 'key': MATCH}, 'value'), Input('nerd-defaults', 'data'), State({'type': 'nerd', 'key': MATCH}, 'id'),
+)
+
+dash.clientside_callback(  # Nerd mode: rain threshold only by the forecast, wet values not when dry
+    "function (roads) { return [roads !== 'forecast', roads === 'dry', roads === 'dry']; }",
+    Output({'type': 'nerd-field', 'key': 'wet_mm'}, 'hidden'), Output({'type': 'nerd-field', 'key': 'wet_grip'}, 'hidden'),
+    Output({'type': 'nerd-field', 'key': 'wet_caution'}, 'hidden'), Input({'type': 'nerd', 'key': 'wet_roads'}, 'value'),
+)
+
+dash.clientside_callback(  # Nerd mode: group fields only when riding in a group
+    "function (on) { return Array(%d).fill(!on); }" % len(GROUP_KEYS),
+    *[Output({'type': 'nerd-field', 'key': key}, 'hidden') for key in GROUP_KEYS], Input({'type': 'nerd', 'key': 'group_on'}, 'value'),
+)
+
+dash.clientside_callback(  # Nerd mode: cornering fields follow the cornering style unless changed
+    r"""
+    function (style, lateral, braking, defaults) {
+        const g = %s[style];
+        if (!g) return [window.dash_clientside.no_update, window.dash_clientside.no_update, window.dash_clientside.no_update];
+        const keep = (v, d) => v !== null && v !== undefined && v !== '' && Number(v) !== d;
+        return [Object.assign({}, defaults, {lateral_g: g[0], braking_g: g[1]}),
+                keep(lateral, defaults.lateral_g) ? lateral : g[0], keep(braking, defaults.braking_g) ? braking : g[1]];
+    }
+    """ % json.dumps(speedcalculation.CORNERING),
+    Output('nerd-defaults', 'data'), Output({'type': 'nerd', 'key': 'lateral_g'}, 'value', allow_duplicate=True),
+    Output({'type': 'nerd', 'key': 'braking_g'}, 'value', allow_duplicate=True),
+    Input('cornering', 'value'), State({'type': 'nerd', 'key': 'lateral_g'}, 'value'), State({'type': 'nerd', 'key': 'braking_g'}, 'value'),
+    State('nerd-defaults', 'data'), prevent_initial_call=True,
+)
+
+
+@app.callback(Output({'type': 'nerd', 'key': ALL}, 'value', allow_duplicate=True), Input('nerd-reset', 'n_clicks'),
+              State({'type': 'nerd', 'key': ALL}, 'id'), State('nerd-defaults', 'data'), prevent_initial_call=True)
+def reset_nerd_fields(clicks, ids, defaults):
+    return [defaults.get(field['key'], NERD_DEFAULTS[field['key']]) for field in ids]
 
 
 dash.clientside_callback(  # Save or share settings: open or close the panel
@@ -1230,7 +1551,8 @@ dash.clientside_callback(  # Save or share settings: open or close the panel
 
 dash.clientside_callback(  # Settings link: the chosen groups as query parameters, in the browser
     r"""
-    function (groups, method, pf, pu, pd, cf, cu, cd, weight, rrType, rr, corner, climbs, weatherOn, shadow, time, date, url, rename, name) {
+    function (groups, method, pf, pu, pd, cf, cu, cd, weight, rrType, rr, corner, climbs, weatherOn, shadow, time, date, url, rename, name,
+              nerdOn, nerdValues, nerdIds, nerdDefaults) {
         groups = groups || [];
         const params = new URLSearchParams();
         const given = (v) => v !== null && v !== undefined && String(v).trim() !== '';
@@ -1246,6 +1568,15 @@ dash.clientside_callback(  # Settings link: the chosen groups as query parameter
         const fromLink = method !== 'Upload file';
         const routeOk = fromLink && given(url) && /ridewithgps\.com\/(routes|trips)\/\d+/.test(url);
         if (groups.includes('route') && routeOk) { set('route', url); if (rename) set('name', name); }
+        if (groups.includes('nerd') && nerdOn) {  // Only values that differ from the defaults
+            params.set('nerd', '1');
+            const norm = (v) => (v === undefined || v === '' ? null : v);
+            (nerdIds || []).forEach((id, k) => {
+                const v = norm(nerdValues[k]), d = norm(nerdDefaults[id.key]);
+                if (v === d || (typeof d === 'number' && v !== null && Number(v) === d) || v === null) return;
+                params.set('n_' + id.key, v === true ? '1' : v === false ? '0' : String(v));
+            });
+        }
         const query = params.toString().replace(/%2C/g, ',').replace(/%3A/g, ':');  // Readable; both allowed in a query
         const link = window.location.origin + window.location.pathname + (query ? '?' + query : '');
         const options = [
@@ -1254,6 +1585,7 @@ dash.clientside_callback(  # Settings link: the chosen groups as query parameter
             {label: 'Start time', value: 'time'}, {label: 'Start date', value: 'date'},
             {label: fromLink ? 'Route: RideWithGPS link, course name' : 'Route: only for RideWithGPS links, not for uploaded files',
              value: 'route', disabled: !fromLink},
+            {label: 'For nerds: changed model values', value: 'nerd', disabled: !nerdOn},
         ];
         const warning = groups.includes('route') && routeOk && /privacy_code/.test(url)
             ? 'The route link contains a privacy code: anyone with this settings link can open your private route.' : null;
@@ -1267,6 +1599,7 @@ dash.clientside_callback(  # Settings link: the chosen groups as query parameter
     Input('rr-type', 'value'), Input('rr-value', 'value'), Input('cornering', 'value'),
     Input('climbs', 'value'), Input('weather-on', 'value'), Input('terrain-shadow', 'value'),
     Input('start-time', 'value'), Input('start-date', 'date'), Input('url', 'value'), Input('course-rename', 'value'), Input('course-name', 'value'),
+    Input('nerd-on', 'value'), Input({'type': 'nerd', 'key': ALL}, 'value'), State({'type': 'nerd', 'key': ALL}, 'id'), State('nerd-defaults', 'data'),
 )
 
 dash.clientside_callback(  # System light/dark setting at page load, so the figures are built in the right colors

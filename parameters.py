@@ -28,6 +28,30 @@ class WeatherProvider(StrEnum):
 class Parameters:
     terrain_shadow: bool = True     # Web app: opt-in switch
     weather_file: str | None = None # Stored weather instead of API calls (web app's example route)
+    # Model values, adjustable in the web app
+    drivetrain_efficiency: float = 0.98
+    max_speed_kmh: float = config.MAX_SPEED_KMH
+    max_pedalling_speed_kmh: float = config.MAX_PEDALLING_SPEED_KMH
+    wind_shear_exponent: float = config.WIND_SHEAR_EXPONENT
+    rider_height_m: float = 1.2     # Torso height, where the wind acts (Martin et al. 1998 measured it there)
+    still_air: bool = False         # Forecast temperature, pressure and rain, but no wind
+    cornering_g: tuple[float, float] | None = None  # Own lateral and braking acceleration instead of the cornering style
+    wet_roads: str = 'forecast'     # 'forecast', 'dry' or 'wet'
+    tunnel_correction: bool = True
+    file_elevation: bool = False    # Keep the elevation of the route file, elevation models only for gaps
+    group_size: int = 1
+    front_share: float | None = None  # Share of time at the front; default 1 / group_size
+    drafting_factor: float = 0.65   # CdA behind a wheel relative to riding alone
+    draft_on_climbs: bool = False
+    echelon_crosswind_ms: float = 2.5  # Echelon warning from this cross wind at rider height ...
+    echelon_yaw_deg: float = 20.0      # ... and yaw angle ...
+    echelon_min_m: float = 500.0       # ... over at least this distance
+    sprint_power_w: float | None = None  # Power out of corners, at least
+    sprint_s: float = 8.0           # Sprint duration at most, ends earlier at the steady speed
+    sprint_min_loss_kmh: float = 5.0  # Only after corners costing at least this speed
+    wet_road_mm_per_h: float = 0.2  # Wet from this precipitation in the hour before passing
+    wet_grip_g: float = 0.6
+    wet_caution: float = 0.75       # Share of lateral and braking acceleration accepted when wet
 
     def __init__(self, argv: list[str] | None = None):
         """Parse the command line, or argv if given (e.g. by the web app)."""

@@ -13,9 +13,9 @@ import utilities, tunnels_bridges
 
 
 # Values of track.points['dem_source']
-DEM_SOURCES = ['swissALTI3D', 'ALOS AW3D30', 'EU-DEM', 'ASTER GDEM', 'SRTM', 'Copernicus DEM', 'Sonny LiDAR DEM', 'Sea (0 m)']
+DEM_SOURCES = ['swissALTI3D', 'ALOS AW3D30', 'EU-DEM', 'ASTER GDEM', 'SRTM', 'Copernicus DEM', 'Sonny LiDAR DEM', 'Sea (0 m)', 'Route file']
 DEM_SOURCE = pl.Enum(DEM_SOURCES)
-SWISSALTI3D, ALOS, EUDEM, ASTER, SRTM, COPERNICUS, SONNY, SEA = range(len(DEM_SOURCES))
+SWISSALTI3D, ALOS, EUDEM, ASTER, SRTM, COPERNICUS, SONNY, SEA, FILE = range(len(DEM_SOURCES))
 
 
 @dataclass(slots=True)
@@ -45,6 +45,11 @@ def addElevationData(parameters, assets):
     track = assets.track
     work = Elevation(lat=track['lat'], lon=track['lon'],
                      elevation=np.full(len(track), np.nan), source=np.full(len(track), -1, dtype=np.int8))
+    if parameters.file_elevation:
+        known = np.isfinite(track['elevation_m'])
+        work.fill(known, track['elevation_m'][known], FILE)
+        if known.any():
+            print('\t- Keeping elevation from the route file')
 
     swissAlti3DElevation(parameters, work)
     SonnyDEMElevation(parameters, work)

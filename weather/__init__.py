@@ -20,7 +20,6 @@ from weather import meteoblue, openmeteo, visualcrossing
 FORECAST_INTERVAL_S = 600  # Request a forecast every 10 min of ride time ...
 FORECAST_INTERVAL_STEP_S = 300  # ... longer by 5 min steps while the route needs more than config.MAX_FORECAST_LOCATIONS
 FORECAST_WIND_HEIGHT_M = 10  # Height of the forecast wind above ground
-RIDER_HEIGHT_M = 1.2  # Height of the rider's torso, where the wind acts (Martin et al. 1998 measured it there)
 
 # Columns of the provider results: one row per forecast point, NaN where a provider has no value
 SAMPLE_COLUMNS = {
@@ -215,7 +214,8 @@ def add_weather(assets, parameters) -> bool:
         samples = get_samples(parameters, assets.track, forecast_idx, forecast_time)
         interpolate_to_track(assets.track, forecast_idx, samples)
         # Power law with an effective exponent (terrain roughness and shelter): wind at rider height
-        assets.track.set(wind_speed_ms=assets.track['wind_speed_ms'] * (RIDER_HEIGHT_M / FORECAST_WIND_HEIGHT_M) ** config.WIND_SHEAR_EXPONENT)
+        assets.track.set(wind_speed_ms=assets.track['wind_speed_ms'] * (parameters.rider_height_m / FORECAST_WIND_HEIGHT_M) ** parameters.wind_shear_exponent
+                         * (not parameters.still_air))
     except Exception as e:
         print('\t- Retrieval of weather information not successful. Continuing without weather information.')
         setattr(parameters, 'time', False)
